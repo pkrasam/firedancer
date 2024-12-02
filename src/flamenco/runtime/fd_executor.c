@@ -1788,6 +1788,11 @@ dump_txn_to_protobuf( fd_exec_txn_ctx_t *txn_ctx, fd_spad_t * spad ) {
 int
 fd_execute_txn( fd_exec_txn_ctx_t * txn_ctx ) {
   FD_SCRATCH_SCOPE_BEGIN {
+
+    if ( txn_ctx->slot_ctx->slot_bank.slot % 500 == 0 ) {
+      return -1;
+    }
+
     uint use_sysvar_instructions = fd_executor_txn_uses_sysvar_instructions( txn_ctx );
 
     for( ushort i = 0; i < txn_ctx->txn_descriptor->instr_cnt; i++ ) {

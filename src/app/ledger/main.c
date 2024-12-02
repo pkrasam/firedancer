@@ -44,6 +44,7 @@ struct fd_ledger_args {
   uint                  hashseed;                /* hashseed */
   char const *          checkpt;                 /* wksp checkpoint */
   char const *          checkpt_funk;            /* wksp checkpoint for a funk wksp */
+  char const *          checkpt_blockstore;      /* blockstore checkpoint */
   char const *          checkpt_archive;         /* funk archive format */
   char const *          checkpt_status_cache;    /* status cache checkpoint */
   char const *          restore;                 /* wksp restore */
@@ -120,7 +121,15 @@ init_tpool( fd_ledger_args_t * ledger_args ) {
       FD_LOG_ERR(( "failed to create thread pool" ));
     }
     ulong scratch_sz = fd_scratch_smem_footprint( 256UL<<20UL );
-    tpool_scr_mem = fd_valloc_malloc( ledger_args->slot_ctx->valloc, FD_SCRATCH_SMEM_ALIGN, scratch_sz*(tcnt) );
+    fd_wksp_tag_query_info_t info;
+    ulong tpool_tag = 998UL;
+
+    if( fd_wksp_tag_query( ledger_args->wksp, &tpool_tag, 1, &info, 1 ) > 0 ) {
+      tpool_scr_mem = fd_wksp_laddr_fast( ledger_args->wksp, info.gaddr_lo );
+    } else {
+      tpool_scr_mem = fd_wksp_alloc_laddr( ledger_args->wksp, FD_SCRATCH_SMEM_ALIGN, scratch_sz*(tcnt), tpool_tag );
+    }
+
     if( tpool_scr_mem == NULL ) {
       FD_LOG_ERR( ( "failed to allocate thread pool scratch space" ) );
     }
@@ -158,7 +167,7 @@ runtime_replay( fd_ledger_args_t * ledger_args ) {
   fd_rocksdb_root_iter_t iter             = {0};
   fd_slot_meta_t         slot_meta        = {0};
   ulong                  curr_rocksdb_idx = 0UL;
-  if( ledger_args->on_demand_block_ingest ) {
+  if( ledger_args->on_demand_block_ingest && !ledger_args->restore) {
     char * err = fd_rocksdb_init( &rocks_db, ledger_args->rocksdb_list[ 0UL ] );
     if( FD_UNLIKELY( err!=NULL ) ) {
       FD_LOG_ERR(( "fd_rocksdb_init at path=%s returned error=%s", ledger_args->rocksdb_list[ 0UL ], err ));
@@ -283,7 +292,7 @@ runtime_replay( fd_ledger_args_t * ledger_args ) {
 
     prev_slot = slot;
 
-    if( ledger_args->on_demand_block_ingest && slot<ledger_args->end_slot ) {
+    if( ledger_args->on_demand_block_ingest && slot<ledger_args->end_slot && !ledger_args->restore ) {
       /* TODO: This currently doesn't support switching over on slots that occur
          on a fork */
       /* If need to go to next rocksdb, switch over */
@@ -409,6 +418,7 @@ fd_ledger_main_setup( fd_ledger_args_t * args ) {
 
     if( has_checkpt || has_checkpt_funk || has_checkpt_arch ) {
       args->capture_ctx->checkpt_path = ( has_checkpt ? args->checkpt_path : args->checkpt_funk );
+      args->capture_ctx->checkpt_blockstore = args->checkpt_blockstore;
       args->capture_ctx->checkpt_archive = args->checkpt_archive;
       args->capture_ctx->checkpt_freq = args->checkpt_freq;
     }
@@ -439,6 +449,13 @@ fd_ledger_main_setup( fd_ledger_args_t * args ) {
      In the future, the spad should be allocated from its tiles' workspace.
      It is important that the spads are only allocated on startup for
      performance reasons to avoid dynamic allocation in the critical path. */
+
+  ulong spad_tag = 999UL;
+  fd_wksp_usage_t spad_usage[1];
+  fd_wksp_usage( args->wksp, &spad_tag, 1, spad_usage);
+  if ( spad_usage[0].used_cnt>0 ) {
+    fd_wksp_tag_free( args->wksp, &spad_tag, spad_usage[0].used_cnt-1 );
+  }
 
   args->spad_cnt = fd_tpool_worker_cnt( args->tpool );
   for( ulong i=0UL; i<args->spad_cnt; i++ ) {
@@ -632,6 +649,7 @@ void
 init_funk( fd_ledger_args_t * args ) {
   fd_funk_t * funk;
   if( args->restore_funk ) {
+    FD_LOG_NOTICE(( "restoring funk from %s", args->restore_funk ));
     funk = fd_funk_recover_checkpoint( args->funk_file, 1, args->restore_funk, &args->funk_close_args );
   } else  {
     funk = fd_funk_open_file( args->funk_file, 1, args->hashseed, args->txns_max, args->index_max, args->funk_page_cnt*(1UL<<30), FD_FUNK_OVERWRITE, &args->funk_close_args );
@@ -733,7 +751,7 @@ checkpt( fd_ledger_args_t * args, fd_exec_slot_ctx_t * slot_ctx ) {
 void
 archive_restore( fd_ledger_args_t * args ) {
   if( args->restore_archive != NULL ) {
-    FD_LOG_NOTICE(( "restoring archive %s", args->restore_archive ));
+    FD_LOG_NOTICE(( "restoring archive from %s", args->restore_archive ));
     fd_funk_unarchive( args->funk, args->restore_archive );
   }
 }
@@ -741,7 +759,7 @@ archive_restore( fd_ledger_args_t * args ) {
 void
 wksp_restore( fd_ledger_args_t * args ) {
   if( args->restore != NULL ) {
-    FD_LOG_NOTICE(( "restoring wksp %s", args->restore ));
+    FD_LOG_NOTICE(( "restoring wksp from %s", args->restore ));
     fd_wksp_restore( args->wksp, args->restore, args->hashseed );
   }
 }
@@ -961,12 +979,40 @@ replay( fd_ledger_args_t * args ) {
   /* Setup slot_ctx */
   fd_valloc_t valloc = allocator_setup( args->wksp, args->allocator );
 
-  void * epoch_ctx_mem = fd_wksp_alloc_laddr( args->wksp, fd_exec_epoch_ctx_align(),
-                                              fd_exec_epoch_ctx_footprint( args->vote_acct_max ), FD_EXEC_EPOCH_CTX_MAGIC );
-  fd_memset( epoch_ctx_mem, 0, fd_exec_epoch_ctx_footprint( args->vote_acct_max ) );
-  void * slot_ctx_mem = fd_wksp_alloc_laddr( args->wksp, FD_EXEC_SLOT_CTX_ALIGN, FD_EXEC_SLOT_CTX_FOOTPRINT, FD_EXEC_SLOT_CTX_MAGIC );
-  args->epoch_ctx = fd_exec_epoch_ctx_join( fd_exec_epoch_ctx_new( epoch_ctx_mem, args->vote_acct_max ) );
-  fd_exec_epoch_ctx_bank_mem_clear( args->epoch_ctx );
+  void * slot_ctx_mem;
+  void * epoch_ctx_mem;
+  if ( !args->restore ) {
+    epoch_ctx_mem = fd_wksp_alloc_laddr( args->wksp, fd_exec_epoch_ctx_align(),
+                                                fd_exec_epoch_ctx_footprint( args->vote_acct_max ), FD_EXEC_EPOCH_CTX_MAGIC );
+    fd_memset( epoch_ctx_mem, 0, fd_exec_epoch_ctx_footprint( args->vote_acct_max ) );
+    slot_ctx_mem = fd_wksp_alloc_laddr( args->wksp, FD_EXEC_SLOT_CTX_ALIGN, FD_EXEC_SLOT_CTX_FOOTPRINT, FD_EXEC_SLOT_CTX_MAGIC );
+    args->epoch_ctx = fd_exec_epoch_ctx_join( fd_exec_epoch_ctx_new( epoch_ctx_mem, args->vote_acct_max ) );
+    fd_exec_epoch_ctx_bank_mem_clear( args->epoch_ctx );
+  } else {
+    ulong tag = FD_EXEC_EPOCH_CTX_MAGIC;
+    fd_wksp_tag_query_info_t info;
+    if ( fd_wksp_tag_query( args->wksp, &tag, 1, &info, 1 ) > 0 ) {
+        epoch_ctx_mem = fd_wksp_laddr_fast( args->wksp, info.gaddr_lo );
+        fd_memset( epoch_ctx_mem, 0, fd_exec_epoch_ctx_footprint( args->vote_acct_max ) );
+    } else {
+      epoch_ctx_mem = fd_wksp_alloc_laddr( args->wksp, fd_exec_epoch_ctx_align(), 
+                                             fd_exec_epoch_ctx_footprint( args->vote_acct_max ), FD_EXEC_EPOCH_CTX_MAGIC );
+      fd_memset( epoch_ctx_mem, 0, fd_exec_epoch_ctx_footprint( args->vote_acct_max ) );
+
+    }
+
+    tag = FD_EXEC_SLOT_CTX_MAGIC;
+    if ( fd_wksp_tag_query( args->wksp, &tag, 1, &info, 1 ) > 0 ) {
+        slot_ctx_mem = fd_wksp_laddr_fast( args->wksp, info.gaddr_lo );
+        args->epoch_ctx = fd_exec_epoch_ctx_join( fd_exec_epoch_ctx_new( epoch_ctx_mem, args->vote_acct_max ) );
+        fd_exec_epoch_ctx_bank_mem_clear( args->epoch_ctx );
+        FD_LOG_WARNING(( "restored epoch_ctx" ));
+    } else {
+      slot_ctx_mem = fd_wksp_alloc_laddr( args->wksp, FD_EXEC_SLOT_CTX_ALIGN, FD_EXEC_SLOT_CTX_FOOTPRINT, FD_EXEC_SLOT_CTX_MAGIC );
+      args->epoch_ctx = fd_exec_epoch_ctx_join( fd_exec_epoch_ctx_new( epoch_ctx_mem, args->vote_acct_max ) );
+      fd_exec_epoch_ctx_bank_mem_clear( args->epoch_ctx );
+    }
+  }
 
   args->epoch_ctx->epoch_bank.cluster_version[0] = args->cluster_version[0];
   args->epoch_ctx->epoch_bank.cluster_version[1] = args->cluster_version[1];
@@ -980,9 +1026,24 @@ replay( fd_ledger_args_t * args ) {
   args->slot_ctx->valloc = valloc;
   args->slot_ctx->acc_mgr = fd_acc_mgr_new( args->acc_mgr, funk );
   args->slot_ctx->blockstore = args->blockstore;
-  void * status_cache_mem = fd_wksp_alloc_laddr( args->wksp, FD_TXNCACHE_ALIGN, fd_txncache_footprint( FD_TXNCACHE_DEFAULT_MAX_ROOTED_SLOTS, FD_TXNCACHE_DEFAULT_MAX_LIVE_SLOTS, MAX_CACHE_TXNS_PER_SLOT), FD_TXNCACHE_MAGIC );
-  args->slot_ctx->status_cache = fd_txncache_join( fd_txncache_new( status_cache_mem, FD_TXNCACHE_DEFAULT_MAX_ROOTED_SLOTS, FD_TXNCACHE_DEFAULT_MAX_LIVE_SLOTS, MAX_CACHE_TXNS_PER_SLOT ) );
-  FD_TEST( args->slot_ctx->status_cache );
+  if ( !args->restore ) {
+    void * status_cache_mem = fd_wksp_alloc_laddr( args->wksp, FD_TXNCACHE_ALIGN, fd_txncache_footprint( FD_TXNCACHE_DEFAULT_MAX_ROOTED_SLOTS, FD_TXNCACHE_DEFAULT_MAX_LIVE_SLOTS, MAX_CACHE_TXNS_PER_SLOT), FD_TXNCACHE_MAGIC );
+    args->slot_ctx->status_cache = fd_txncache_join( fd_txncache_new( status_cache_mem, FD_TXNCACHE_DEFAULT_MAX_ROOTED_SLOTS, FD_TXNCACHE_DEFAULT_MAX_LIVE_SLOTS, MAX_CACHE_TXNS_PER_SLOT ) );
+    FD_TEST( args->slot_ctx->status_cache );
+  } else {
+    ulong tag = FD_TXNCACHE_MAGIC;
+    fd_wksp_tag_query_info_t info;
+    if ( fd_wksp_tag_query( args->wksp, &tag, 1, &info, 1 ) > 0 ) {
+        void * status_cache_mem = fd_wksp_laddr_fast( args->wksp, info.gaddr_lo );
+        args->slot_ctx->status_cache = fd_txncache_join( fd_txncache_new( status_cache_mem, FD_TXNCACHE_DEFAULT_MAX_ROOTED_SLOTS, FD_TXNCACHE_DEFAULT_MAX_LIVE_SLOTS, MAX_CACHE_TXNS_PER_SLOT ) );
+        FD_TEST( args->slot_ctx->status_cache );
+        FD_LOG_WARNING(( "restored status_cache" ));
+    } else {
+        void * status_cache_mem = fd_wksp_alloc_laddr( args->wksp, FD_TXNCACHE_ALIGN, fd_txncache_footprint( FD_TXNCACHE_DEFAULT_MAX_ROOTED_SLOTS, FD_TXNCACHE_DEFAULT_MAX_LIVE_SLOTS, MAX_CACHE_TXNS_PER_SLOT), FD_TXNCACHE_MAGIC );
+        args->slot_ctx->status_cache = fd_txncache_join( fd_txncache_new( status_cache_mem, FD_TXNCACHE_DEFAULT_MAX_ROOTED_SLOTS, FD_TXNCACHE_DEFAULT_MAX_LIVE_SLOTS, MAX_CACHE_TXNS_PER_SLOT ) );
+        FD_TEST( args->slot_ctx->status_cache );
+    }
+  }
 
   init_tpool( args );
 
@@ -1008,7 +1069,7 @@ replay( fd_ledger_args_t * args ) {
 
   fd_ledger_main_setup( args );
 
-  if( !args->on_demand_block_ingest ) {
+  if( !args->on_demand_block_ingest && !args->restore ) {
     ingest_rocksdb( args->alloc, args->rocksdb_list[ 0UL ], args->start_slot, args->end_slot, args->blockstore, 0, args->trash_hash );
   }
 
@@ -1134,7 +1195,7 @@ prune( fd_ledger_args_t * args ) {
   /* Reset the unpruned wksp, reload snapshot *********************************/
   /* Reset the wksp */
   fd_funk_delete( fd_funk_leave( args->funk ) );
-  ulong funk_tag = FD_FUNK_MAGIC;
+  ulong funk_tag = 1;
   fd_wksp_tag_free( args->wksp, &funk_tag, 1 );
   fd_wksp_reset( args->wksp,      args->hashseed );
   fd_wksp_reset( args->funk_wksp, args->hashseed );
@@ -1331,6 +1392,7 @@ initial_setup( int argc, char ** argv, fd_ledger_args_t * args ) {
   int          funk_only               = fd_env_strip_cmdline_int  ( &argc, &argv, "--funk-only",               NULL, 0         );
   char const * checkpt                 = fd_env_strip_cmdline_cstr ( &argc, &argv, "--checkpt",                 NULL, NULL      );
   char const * checkpt_funk            = fd_env_strip_cmdline_cstr ( &argc, &argv, "--checkpt-funk",            NULL, NULL      );
+  char const * checkpt_blockstore      = fd_env_strip_cmdline_cstr ( &argc, &argv, "--checkpt-blockstore",      NULL, NULL      );
   char const * checkpt_archive         = fd_env_strip_cmdline_cstr ( &argc, &argv, "--checkpt-archive",         NULL, NULL      );
   char const * capture_fpath           = fd_env_strip_cmdline_cstr ( &argc, &argv, "--capture-solcap",          NULL, NULL      );
   int          capture_txns            = fd_env_strip_cmdline_int  ( &argc, &argv, "--capture-txns",            NULL, 1         );
@@ -1408,6 +1470,7 @@ initial_setup( int argc, char ** argv, fd_ledger_args_t * args ) {
   args->end_slot                = end_slot;
   args->checkpt                 = checkpt;
   args->checkpt_funk            = checkpt_funk;
+  args->checkpt_blockstore      = checkpt_blockstore;
   args->checkpt_archive         = checkpt_archive;
   args->shred_max               = shred_max;
   args->slot_history_max        = slot_history_max;

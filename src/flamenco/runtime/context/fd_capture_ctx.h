@@ -18,6 +18,7 @@ struct __attribute__((aligned(FD_CAPTURE_CTX_ALIGN))) fd_capture_ctx {
   /* Checkpointing */
   ulong                    checkpt_freq;    /* Must be a rooted slot */
   char const *             checkpt_path;    /* Wksp checkpoint format */
+  char const *             checkpt_blockstore; /* Wksp checkpoint format */
   char const *             checkpt_archive; /* Funk archive format */
 
   /* Prune */

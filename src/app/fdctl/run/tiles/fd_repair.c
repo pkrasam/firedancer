@@ -286,7 +286,7 @@ repair_shred_deliver_fail( fd_pubkey_t const * id FD_PARAM_UNUSED,
                            uint                shred_index,
                            void *              arg FD_PARAM_UNUSED,
                            int                 reason ) {
-  FD_LOG_WARNING(( "repair failed to get shred - slot: %lu, shred_index: %u, reason: %u", slot, shred_index, reason ));
+  FD_LOG_WARNING(( "repair failed to get shred - slot: %lu, shred_index: %u, reason: %d", slot, shred_index, reason ));
 }
 
 static inline int

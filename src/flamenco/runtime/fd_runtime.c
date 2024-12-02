@@ -2794,7 +2794,7 @@ fd_runtime_checkpt( fd_capture_ctx_t * capture_ctx,
 
   if( capture_ctx->checkpt_path != NULL ) {
     if( !is_abort_slot ) {
-      FD_LOG_NOTICE(( "checkpointing at slot=%lu to file=%s", slot, capture_ctx->checkpt_path ));
+      FD_LOG_NOTICE(( "checkpointing funk at slot=%lu to file=%s", slot, capture_ctx->checkpt_path ));
       fd_funk_end_write( slot_ctx->acc_mgr->funk );
     } else {
       FD_LOG_NOTICE(( "checkpointing after mismatch to file=%s", capture_ctx->checkpt_path ));
@@ -2808,6 +2808,25 @@ fd_runtime_checkpt( fd_capture_ctx_t * capture_ctx,
 
     if( !is_abort_slot ) {
       fd_funk_start_write( slot_ctx->acc_mgr->funk );
+    }
+  }
+
+  if ( capture_ctx->checkpt_blockstore != NULL ) {
+    if( !is_abort_slot ) {
+      FD_LOG_NOTICE(( "checkpointing blockstore at slot=%lu to file=%s", slot, capture_ctx->checkpt_blockstore ));
+    } else {
+      fd_blockstore_end_read( slot_ctx->blockstore );
+      FD_LOG_NOTICE(( "checkpointing blockstore after mismatch to file=%s", capture_ctx->checkpt_blockstore ));
+    }
+
+    unlink( capture_ctx->checkpt_blockstore );
+    int err = fd_wksp_checkpt( fd_blockstore_wksp( slot_ctx->blockstore ), capture_ctx->checkpt_blockstore, 0666, 0, NULL );
+    if ( err ) {
+      FD_LOG_ERR(( "backup failed: error %d", err ));
+    }
+
+    if ( is_abort_slot ) {
+      fd_blockstore_start_read( slot_ctx->blockstore );
     }
   }
 

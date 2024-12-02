@@ -54,6 +54,7 @@ name = \"fd1\"
         capture = \"fddev.solcap\"
         blockstore_publish = true
         blockstore_checkpt = \"fddev-blockstore.checkpt\"
+        funk_checkpt = \"fddev-funk.checkpt\"
         snapshot = \"$FULL_SNAPSHOT\"
         tpool_thread_count = 8
         funk_sz_gb = 32
