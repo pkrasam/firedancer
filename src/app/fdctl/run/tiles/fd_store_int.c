@@ -261,6 +261,7 @@ after_frag( fd_store_tile_ctx_t * ctx,
     if( fd_store_shred_insert( ctx->store, shred ) < FD_BLOCKSTORE_OK ) {
       FD_LOG_ERR(( "failed inserting to blockstore" ));
     } else if ( ctx->shred_cap_ctx.is_archive ) {
+        FD_LOG_NOTICE(("got repair shred %lu, shred index %u", shred->slot, shred->idx));
         uchar shred_cap_flag = FD_SHRED_CAP_FLAG_MARK_REPAIR(0);
         if ( fd_shred_cap_archive(&ctx->shred_cap_ctx, shred, shred_cap_flag) < FD_SHRED_CAP_OK ) {
           FD_LOG_ERR(( "failed at archiving repair shred to file" ));
