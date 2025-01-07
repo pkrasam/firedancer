@@ -59,18 +59,6 @@ struct fd_entry_row {
 };
 typedef struct fd_entry_row fd_entry_row_t;
 
-static ulong
-get_next_batch_shred_off( fd_block_shred_t * shreds, ulong shreds_cnt, ulong * curr_shred_idx ) {
-  for( ulong i = *curr_shred_idx; i < shreds_cnt; i++ ) {
-    if( shreds[i].hdr.data.flags & FD_SHRED_DATA_FLAG_DATA_COMPLETE ) {
-      *curr_shred_idx = i + 1;
-      if (i + 1 < shreds_cnt) return shreds[i + 1].off;
-      else return ULONG_MAX;
-    }
-  }
-  return ULONG_MAX;
-}
-
 static void 
 entry_write_header( const char *filename ) {
     FILE *file = fopen(filename, "w");
@@ -123,6 +111,18 @@ entry_append_csv( const char * filename, fd_entry_row_t * row ) {
     fclose(file);
 }
 
+static ulong
+get_next_batch_shred_off( fd_block_shred_t * shreds, ulong shreds_cnt, ulong * curr_shred_idx ) {
+  for( ulong i = *curr_shred_idx; i < shreds_cnt; i++ ) {
+    if( shreds[i].hdr.data.flags & FD_SHRED_DATA_FLAG_DATA_COMPLETE ) {
+      *curr_shred_idx = i + 1;
+      if (i + 1 < shreds_cnt) return shreds[i + 1].off;
+      else return ULONG_MAX;
+    }
+  }
+  return ULONG_MAX;
+}
+
 static int
 initialize_rocksdb( fd_wksp_t * wksp, 
                     fd_blockstore_t * blockstore, 
@@ -134,7 +134,10 @@ initialize_rocksdb( fd_wksp_t * wksp,
     fd_rocksdb_root_iter_t iter             = {0};
 
     char * err = fd_rocksdb_init( &rocks_db, folder );
-    FD_LOG_NOTICE(( "rocksdb init: %s", err ));
+    if( err ) {
+      FD_LOG_ERR(( "Failed to initialize rocksdb: %s", err ));
+      return -1;
+    }
 
     fd_rocksdb_root_iter_new( &iter );
     void *       alloc_mem = fd_wksp_alloc_laddr( wksp, fd_alloc_align(), fd_alloc_footprint(), 1UL );
@@ -177,14 +180,14 @@ aggregate_entries( fd_wksp_t * wksp, const char * folder, const char * csv, ulon
       FD_TEST( block );
 
       fd_block_shred_t * shreds = fd_wksp_laddr_fast( wksp, block->shreds_gaddr );
-      uchar * data              = fd_wksp_laddr_fast( wksp, block->data_gaddr );
       fd_block_micro_t * micros = fd_wksp_laddr_fast( wksp, block->micros_gaddr );
+      uchar * data              = fd_wksp_laddr_fast( wksp, block->data_gaddr );
 
-      FD_LOG_DEBUG(( " SLOT: %lu", slot ));
+      FD_LOG_DEBUG(( "SLOT: %lu", slot ));
 
      /* prepare batch boundaries */
       ulong curr_shred_idx       = 0;
-      ulong next_batch_shred_idx = curr_shred_idx;
+      ulong next_batch_shred_idx = curr_shred_idx;  /* not necessary to maintain both, but could be useful */
       int   curr_batch_tick      = shreds[curr_shred_idx].hdr.data.flags & FD_SHRED_DATA_REF_TICK_MASK;
       ulong next_batch_off       = get_next_batch_shred_off( shreds, block->shreds_cnt, &next_batch_shred_idx );
       
@@ -208,7 +211,7 @@ aggregate_entries( fd_wksp_t * wksp, const char * folder, const char * csv, ulon
           }
         }
   
-# if SANITY_CHECK
+# if 0
         for ( ulong i = curr_shred_idx; i < next_batch_shred_idx; i++ ) {
           fd_block_shred_t * s = &shreds[i];
           if (( s->hdr.data.flags & FD_SHRED_DATA_REF_TICK_MASK  ) != curr_batch_tick ){
@@ -224,7 +227,9 @@ aggregate_entries( fd_wksp_t * wksp, const char * folder, const char * csv, ulon
 
         /**
          Iterate through the transactions in the microblock to calculate the total payload size
+         to handle case where there's extra stuff between microblocks
          */
+
         ulong total_sz = sizeof( fd_microblock_hdr_t );
         ulong blockoff = micro->off + sizeof( fd_microblock_hdr_t );
         for ( ulong txn_idx = 0; txn_idx < hdr->txn_cnt; txn_idx++ ) {
@@ -245,8 +250,7 @@ aggregate_entries( fd_wksp_t * wksp, const char * folder, const char * csv, ulon
         row.sz                      = total_sz;
 
         if ( row.txn_cnt == 0 ) { /* truncate payload sz to 48 at all times */
-          /* sometimes gotchad by reappearing mcounts, although this should
-            be solved by iterating txn counts above */
+          /* this shouldn't be needed bc of iterating txn counts above, but here to be safe */
           row.sz = 48;
         }
 
@@ -280,6 +284,8 @@ aggregate_batch_entries( fd_wksp_t * wksp, const char * folder, const char * csv
     for ( ulong shred_idx = 0; shred_idx < block->shreds_cnt; shred_idx++ ) {
       fd_block_shred_t * shred = &shreds[shred_idx];
       batch_sz += fd_shred_payload_sz( &shred->hdr );
+
+      /* batch done */
 
       if( shred->hdr.data.flags & FD_SHRED_DATA_FLAG_DATA_COMPLETE ) {
         row.shred_cnt = shred_idx - batch_start + 1;
@@ -331,7 +337,6 @@ investigate_shred( fd_wksp_t * wksp, const char * folder, ulong st, ulong end ){
     }
     printf("Slot done %lu\n\n", slot);
   }
-
 }
 
 static int
