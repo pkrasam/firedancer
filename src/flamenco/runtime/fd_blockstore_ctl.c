@@ -7,6 +7,33 @@ sudo /data/emwang/agave/release/agave-ledger-tool -l /data/emwang/rocksdb.tar.zs
  - to look at slot bounds
 */
 
+static int
+usage( void ) {
+  fprintf( stderr,
+    "Usage: fd_blockstore_ctl {microblock|batch|info} [options]\n"
+    "\n"
+    "Reads from a rocksdb path and tries to import all slots from st to en. \n"
+    "Will continue if the slot does not exist in the rocksdb folder. \n"
+    "It then aggregates the data into a csv file.\n"
+    "\n"
+    "If microblock is specified, it will aggregate the data into a csv file with the following columns:\n"
+    "\tslot, batch_idx, ref_tick, hash_cnt_from_slot_start, sz, txn_cnt\n"
+    "\n"
+    "If batch is specified, it will aggregate the data into a csv file with the following columns:\n"
+    "\tslot, ref_tick, sz, shred_cnt\n"
+    "\n"
+    "If info is specified, it will print the shred payload sizes and if the shred is the last in the batch to stdout\n"
+    "\n"
+    "Options:\n"
+    "  {microblock|batch|info}                  Type of aggregation         Required\n"
+    "  --rocksdb-path {path}                    Path of rocksdb/            Required\n"
+    "  --out          {out.csv}                 Output csv path             Required for {microblock|batch}\n"            
+    "  st             {start_slot}              Target start slot           Required\n"
+    "  en             {end_slot}                Target end slot             Required\n"
+    "\n" );
+  return 0;
+}
+
 #define INITIALIZE_BLOCKSTORE( blockstore )                                              \
     ulong shred_max = 1 << 17;                                                           \
     ulong idx_max = 1 << 12;                                                             \
@@ -337,33 +364,6 @@ investigate_shred( fd_wksp_t * wksp, const char * folder, ulong st, ulong end ){
     }
     printf("Slot done %lu\n\n", slot);
   }
-}
-
-static int
-usage( void ) {
-  fprintf( stderr,
-    "Usage: fd_blockstore_ctl {microblock|batch|info} [options]\n"
-    "\n"
-    "Reads from a rocksdb path and tries to import all slots from st to en. \n"
-    "Will continue if the slot does not exist in the rocksdb folder. \n"
-    "It then aggregates the data into a csv file.\n"
-    "\n"
-    "If microblock is specified, it will aggregate the data into a csv file with the following columns:\n"
-    "\tslot, batch_idx, ref_tick, hash_cnt_from_slot_start, sz, txn_cnt\n"
-    "\n"
-    "If batch is specified, it will aggregate the data into a csv file with the following columns:\n"
-    "\tslot, ref_tick, sz, shred_cnt\n"
-    "\n"
-    "If info is specified, it will print the shred payload sizes and if the shred is the last in the batch to stdout\n"
-    "\n"
-    "Options:\n"
-    "  {microblock|batch|info}                  Type of aggregation         Required\n"
-    "  --rocksdb-path {path}                    Path of rocksdb/            Required\n"
-    "  --out          {out.csv}                 Output csv path             Required for {microblock|batch}\n"            
-    "  st             {start_slot}              Target start slot           Required\n"
-    "  en             {end_slot}                Target end slot             Required\n"
-    "\n" );
-  return 0;
 }
 
 const char *
