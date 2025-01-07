@@ -1,6 +1,7 @@
 #include "../../flamenco/runtime/fd_blockstore.h"
 #include "../../flamenco/runtime/fd_rocksdb.h"
 #include <unistd.h>
+#include <stdio.h>
 
 /*
 sudo /data/emwang/agave/release/agave-ledger-tool -l /data/emwang/rocksdb.tar.zst bounds
@@ -33,7 +34,7 @@ usage( void ) {
     "\n" );
   return 0;
 }
-
+ 
 #define INITIALIZE_BLOCKSTORE( blockstore )                                              \
     ulong shred_max = 1 << 17;                                                           \
     ulong idx_max = 1 << 12;                                                             \
