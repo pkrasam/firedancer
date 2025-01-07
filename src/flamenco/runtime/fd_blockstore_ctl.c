@@ -238,15 +238,7 @@ aggregate_entries( fd_wksp_t * wksp, const char * folder, const char * csv, ulon
             FD_LOG_DEBUG(("New Batch is last batch in slot"));
           }
         }
-  
-# if 0
-        for ( ulong i = curr_shred_idx; i < next_batch_shred_idx; i++ ) {
-          fd_block_shred_t * s = &shreds[i];
-          if (( s->hdr.data.flags & FD_SHRED_DATA_REF_TICK_MASK  ) != curr_batch_tick ){
-            FD_LOG_WARNING(("shred ref tick mismatch, shred: %lu, curr_batch_tick: %d, shred_tick: %d, is last in batch: %d", i, curr_batch_tick, s->hdr.data.flags & FD_SHRED_DATA_REF_TICK_MASK, s->hdr.data.flags & FD_SHRED_DATA_FLAG_SLOT_COMPLETE));
-          }
-        }
-# endif
+
         row.ref_tick = curr_batch_tick; 
 
         fd_microblock_hdr_t * hdr = (fd_microblock_hdr_t *)( (uchar *)data + micro->off );
