@@ -41,32 +41,32 @@ usage( void ) {
     ulong block_max = 1 << 17;                                                           \
     ulong txn_max = 1 << 17;                                                             \
     void * mem = fd_wksp_alloc_laddr( wksp,                                              \
-                                        fd_blockstore_align(),                           \
-                                        fd_blockstore_footprint( shred_max,              \
-                                                                 block_max,              \
-                                                                 idx_max,                \
-                                                                 txn_max ),              \
-                                        1UL );                                           \
+                                      fd_blockstore_align(),                             \
+                                      fd_blockstore_footprint( shred_max,                \
+                                                               block_max,                \
+                                                               idx_max,                  \
+                                                               txn_max ),                \
+                                      1UL );                                             \
     FD_TEST( mem );                                                                      \
     fd_blockstore_t * blockstore = fd_blockstore_join( fd_blockstore_new( mem,           \
-                                                                            1,           \
-                                                                            0,           \
-                                                                            shred_max,   \
-                                                                            block_max,   \
-                                                                            idx_max,     \
-                                                                            txn_max ) ); \
+                                                                          1,             \
+                                                                          0,             \
+                                                                          shred_max,     \
+                                                                          block_max,     \
+                                                                          idx_max,       \
+                                                                          txn_max ) );   \
     FD_TEST( blockstore );                                                               \
     fd_slot_bank_t slot_bank = {                                                         \
         .slot = 1,                                                                       \
         .prev_slot = 0,                                                                  \
-        .banks_hash = {.hash = {0}},                                                     \
+        .banks_hash = { .hash = {0} },                                                   \
         .block_height = 1,                                                               \
     };                                                                                   \
     fd_slot_bank_new( &slot_bank );                                                      \
-    fd_hash_t fake_hash = {.hash = {1}};                                                 \
+    fd_hash_t fake_hash = { .hash = {1} };                                               \
     slot_bank.block_hash_queue.last_hash = &fake_hash;                                   \
     slot_bank.block_hash_queue.last_hash_index = 0;                                      \
-    int fd = open("dummy.archv", O_RDWR | O_CREAT, 0666);                                \
+    int fd = open( "dummy.archv", O_RDWR | O_CREAT, 0666 );                              \
     FD_TEST( fd > 0 );
 
 struct fd_batch_row {
@@ -89,9 +89,9 @@ typedef struct fd_entry_row fd_entry_row_t;
 
 static void 
 entry_write_header( const char *filename ) {
-    FILE *file = fopen(filename, "w");
-    if (file == NULL) {
-        perror("Error opening file");
+    FILE *file = fopen( filename, "w" );
+    if ( FD_UNLIKELY( file == NULL ) ) {
+        perror( "Error opening file" );
         return;
     }
     fprintf(file, "slot,batch_idx,ref_tick,hash_count_from_start,sz,txn_cnt\n");
@@ -101,7 +101,7 @@ entry_write_header( const char *filename ) {
 static void 
 batch_write_header( const char *filename ) {
     FILE *file = fopen(filename, "w");
-    if (file == NULL) {
+    if ( FD_UNLIKELY( file == NULL ) ) {
         perror("Error opening file");
         return;
     }
@@ -112,7 +112,7 @@ batch_write_header( const char *filename ) {
 static void 
 batch_append_csv( const char * filename, fd_batch_row_t * row ) {
     FILE *file = fopen(filename, "a");
-    if (file == NULL) {
+    if ( FD_UNLIKELY( file == NULL ) ) {
         perror("Error opening file");
         return;
     }
@@ -127,7 +127,7 @@ batch_append_csv( const char * filename, fd_batch_row_t * row ) {
 static void 
 entry_append_csv( const char * filename, fd_entry_row_t * row ) {
     FILE *file = fopen(filename, "a");
-    if (file == NULL) {
+    if ( FD_UNLIKELY( file == NULL ) ) {
         perror("Error opening file");
         return;
     }
@@ -144,7 +144,7 @@ get_next_batch_shred_off( fd_block_shred_t * shreds, ulong shreds_cnt, ulong * c
   for( ulong i = *curr_shred_idx; i < shreds_cnt; i++ ) {
     if( shreds[i].hdr.data.flags & FD_SHRED_DATA_FLAG_DATA_COMPLETE ) {
       *curr_shred_idx = i + 1;
-      if (i + 1 < shreds_cnt) return shreds[i + 1].off;
+      if ( i + 1 < shreds_cnt ) return shreds[i + 1].off;
       else return ULONG_MAX;
     }
   }
@@ -194,7 +194,7 @@ initialize_rocksdb( fd_wksp_t * wksp,
 static void
 aggregate_entries( fd_wksp_t * wksp, const char * folder, const char * csv, ulong st, ulong end ){
     INITIALIZE_BLOCKSTORE( blockstore );
-    FD_TEST(fd_blockstore_init(blockstore, fd, FD_BLOCKSTORE_ARCHIVE_MIN_SIZE, &slot_bank));
+    FD_TEST( fd_blockstore_init( blockstore, fd, FD_BLOCKSTORE_ARCHIVE_MIN_SIZE, &slot_bank ) );
   
     ulong populated_slots[end - st + 1];
     memset( populated_slots, -1, sizeof(populated_slots) );
@@ -232,10 +232,10 @@ aggregate_entries( fd_wksp_t * wksp, const char * folder, const char * csv, ulon
           curr_batch_tick = shreds[next_batch_shred_idx].hdr.data.flags & FD_SHRED_DATA_REF_TICK_MASK;
           curr_shred_idx  = next_batch_shred_idx;
           next_batch_off  = get_next_batch_shred_off( shreds, block->shreds_cnt, &next_batch_shred_idx ); // advance shred idx to next batch
-          FD_LOG_DEBUG(("New Batch - shred idx start: %lu, end: %lu, ref_tick: %d, off : %lu", curr_shred_idx, next_batch_shred_idx, curr_batch_tick, shreds[curr_shred_idx].off));
+          FD_LOG_DEBUG(( "New Batch - shred idx start: %lu, end: %lu, ref_tick: %d, off : %lu", curr_shred_idx, next_batch_shred_idx, curr_batch_tick, shreds[curr_shred_idx].off ));
 
           if( FD_UNLIKELY(next_batch_off == ULONG_MAX ) ) {
-            FD_LOG_DEBUG(("New Batch is last batch in slot"));
+            FD_LOG_DEBUG(( "New Batch is last batch in slot" ));
           }
         }
 
@@ -250,8 +250,8 @@ aggregate_entries( fd_wksp_t * wksp, const char * folder, const char * csv, ulon
          to handle case where there's extra stuff between microblocks
          */
 
-        ulong total_sz = sizeof( fd_microblock_hdr_t );
-        ulong blockoff = micro->off + sizeof( fd_microblock_hdr_t );
+        ulong total_sz = sizeof(fd_microblock_hdr_t);
+        ulong blockoff = micro->off + sizeof(fd_microblock_hdr_t);
         for ( ulong txn_idx = 0; txn_idx < hdr->txn_cnt; txn_idx++ ) {
           ulong raw_mblk = (ulong) data + blockoff;
           uchar txn_out[FD_TXN_MAX_SZ];
@@ -274,7 +274,7 @@ aggregate_entries( fd_wksp_t * wksp, const char * folder, const char * csv, ulon
           row.sz = 48;
         }
 
-        entry_append_csv(csv, &row);
+        entry_append_csv( csv, &row );
         FD_LOG_DEBUG(( "Entry | slot: %lu, payload_sz: %lu txn_cnt: %lu, ref_tick: %d",
                         row.slot, row.sz, row.txn_cnt, row.ref_tick ));
       }
@@ -284,7 +284,7 @@ aggregate_entries( fd_wksp_t * wksp, const char * folder, const char * csv, ulon
 static void
 aggregate_batch_entries( fd_wksp_t * wksp, const char * folder, const char * csv, ulong st, ulong end ){
   INITIALIZE_BLOCKSTORE( blockstore );
-  FD_TEST(fd_blockstore_init(blockstore, fd, FD_BLOCKSTORE_ARCHIVE_MIN_SIZE, &slot_bank));
+  FD_TEST( fd_blockstore_init( blockstore, fd, FD_BLOCKSTORE_ARCHIVE_MIN_SIZE, &slot_bank ) );
 
   ulong populated_slots[end - st + 1];
   memset( populated_slots, -1, sizeof(populated_slots) );
@@ -316,7 +316,7 @@ aggregate_batch_entries( fd_wksp_t * wksp, const char * folder, const char * csv
         batch_sz      = 0;
         batch_start   = shred_idx + 1;
 
-        batch_append_csv(csv, &row);
+        batch_append_csv( csv, &row );
 
         FD_LOG_DEBUG(( "Batch | slot: %lu, ref_tick: %d, payload_sz: %lu, shred_cnt: %lu",
                             row.slot, row.ref_tick, row.sz, row.shred_cnt ));
@@ -328,7 +328,7 @@ aggregate_batch_entries( fd_wksp_t * wksp, const char * folder, const char * csv
 static void
 investigate_shred( fd_wksp_t * wksp, const char * folder, ulong st, ulong end ){
   INITIALIZE_BLOCKSTORE( blockstore );
-  FD_TEST(fd_blockstore_init(blockstore, fd, FD_BLOCKSTORE_ARCHIVE_MIN_SIZE, &slot_bank));
+  FD_TEST( fd_blockstore_init( blockstore, fd, FD_BLOCKSTORE_ARCHIVE_MIN_SIZE, &slot_bank ) );
 
   ulong populated_slots[end - st + 1];
   memset( populated_slots, -1, sizeof(populated_slots) );
@@ -348,7 +348,7 @@ investigate_shred( fd_wksp_t * wksp, const char * folder, ulong st, ulong end ){
       
       printf("Shred payload sz: %lu\n", fd_shred_payload_sz( &shred->hdr ));
       if( shred->hdr.data.flags & FD_SHRED_DATA_FLAG_DATA_COMPLETE ) {
-        printf( " -- BATCH DONE -- \n" );
+        printf(" -- BATCH DONE -- \n");
       }
     }
     for ( ulong micro_idx = 0; micro_idx < block->micros_cnt; micro_idx++ ) {
@@ -361,8 +361,8 @@ investigate_shred( fd_wksp_t * wksp, const char * folder, ulong st, ulong end ){
 
 const char *
 prepare_csv( int argc, char ** argv ) {
-  const char * csv = fd_env_strip_cmdline_cstr( &argc, &argv, "--out", NULL, NULL);
-  int csv_fd = open(csv, O_RDWR | O_CREAT, 0666);
+  const char * csv = fd_env_strip_cmdline_cstr( &argc, &argv, "--out", NULL, NULL );
+  int csv_fd = open( csv, O_RDWR | O_CREAT, 0666 );
   FD_TEST( csv_fd > 0 );
   int err = ftruncate( csv_fd, 0);
   FD_TEST( err == 0 );
@@ -392,21 +392,21 @@ main( int argc, char ** argv ) {
   }
 
   const char * folder = fd_env_strip_cmdline_cstr( &argc, &argv, "--rocksdb-path", NULL, NULL);
-  int fd = open(folder, O_RDONLY | O_DIRECTORY, 0666);
+  int fd = open( folder, O_RDONLY | O_DIRECTORY, 0666 );
   FD_TEST( fd > 0 );
 
-  ulong start = fd_env_strip_cmdline_ulong( &argc, &argv, "st", NULL, 0);
-  ulong end = fd_env_strip_cmdline_ulong( &argc, &argv, "en", NULL, 0); 
+  ulong start = fd_env_strip_cmdline_ulong( &argc, &argv, "st", NULL, 0 );
+  ulong end   = fd_env_strip_cmdline_ulong( &argc, &argv, "en", NULL, 0 ); 
 
-  if ( fd_env_strip_cmdline_contains( &argc, &argv, "microblock")){
+  if ( fd_env_strip_cmdline_contains(&argc, &argv, "microblock") ){
     const char * csv = prepare_csv(argc, argv);
     entry_write_header(csv);
     aggregate_entries( wksp , folder, csv, start, end);
-  } else if( fd_env_strip_cmdline_contains( &argc, &argv, "batch")){
+  } else if( fd_env_strip_cmdline_contains(&argc, &argv, "batch") ){
     const char * csv = prepare_csv(argc, argv);
     batch_write_header(csv);
     aggregate_batch_entries( wksp, folder, csv, start, end);
-  } else if( fd_env_strip_cmdline_contains( &argc, &argv, "info")){
+  } else if( fd_env_strip_cmdline_contains(&argc, &argv, "info") ){
     investigate_shred( wksp, folder, start, end );
   } else {
     FD_LOG_WARNING(("Please specify either microblock, batch, or info in the command line. Check --help for usage." ));
