@@ -91,7 +91,6 @@ struct __attribute__((packed)) fd_voter_state {
       struct __attribute__((packed)) fd_voter_state_tower {
         ulong cnt;
         struct __attribute__((packed)) fd_voter_state_tower_vote {
-          uchar latency;
           ulong slot;
           uint  conf;
         } votes[32]; /* only first `cnt` elements are valid */

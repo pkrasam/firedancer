@@ -346,6 +346,7 @@ fd_forks_update( fd_forks_t *      forks,
     fd_voter_t *             voter = &epoch_voters[i];
     fd_voter_state_t const * state = fd_voter_state( funk, txn, &voter->rec );
     ulong                    vote  = fd_voter_state_vote( state );
+    if (state->discriminant == 2) FD_LOG_ERR(( "Having current version vote state" ));
 
     /* Only process votes for slots >= root. Ghost requires vote slot
         to already exist in the ghost tree. */
