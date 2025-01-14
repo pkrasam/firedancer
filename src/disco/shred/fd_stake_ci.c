@@ -245,7 +245,10 @@ fd_stake_ci_dest_add_fini_impl( fd_stake_ci_t       * info,
 
   ei->sdest  = fd_shred_dest_join( fd_shred_dest_new( ei->_sdest, info->shred_dest_temp, j, ei->lsched, info->identity_key,
                                                       ei->excluded_stake ) );
-  if( ei->sdest==NULL ) FD_LOG_ERR(("sdest is assigned NULL"));
+  if( ei->sdest==NULL ) {
+    FD_LOG_WARNING(("ei->sdest==NULL"));
+    __asm__("int 3");
+  }
 
   if( FD_UNLIKELY( ei->sdest==NULL ) ) {
     /* Happens if the identity key is not present, which can only happen
