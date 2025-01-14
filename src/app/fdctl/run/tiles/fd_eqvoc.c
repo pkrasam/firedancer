@@ -248,6 +248,7 @@ unprivileged_init( fd_topo_t *      topo,
                   (ulong)scratch + scratch_footprint( tile )) );
   }
 
+  FD_LOG_NOTICE(("Yunhao: identity key = %s, %lu", FD_BASE58_ENC_32_ALLOCA(ctx->identity_key), fd_stake_ci_footprint()));
   ctx->stake_ci = fd_stake_ci_join( fd_stake_ci_new( stake_ci_mem, ctx->identity_key ) );
   ctx->eqvoc    = fd_eqvoc_join( fd_eqvoc_new( eqvoc_mem, 1 << 10, 1 << 10, 0 ) );
 
