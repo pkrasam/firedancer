@@ -247,7 +247,7 @@ fd_stake_ci_dest_add_fini_impl( fd_stake_ci_t       * info,
                                                       ei->excluded_stake ) );
   if( ei->sdest==NULL ) {
     FD_LOG_WARNING(("ei->sdest==NULL"));
-    __asm__("int 3");
+    __asm__("int $3");
   }
 
   if( FD_UNLIKELY( ei->sdest==NULL ) ) {
