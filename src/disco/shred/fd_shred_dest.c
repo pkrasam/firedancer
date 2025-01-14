@@ -112,7 +112,7 @@ fd_shred_dest_new( void                           * mem,
   }
   pubkey_to_idx_t * query = pubkey_to_idx_query( pubkey_to_idx_map, *source, NULL );
   if( FD_UNLIKELY( !query ) ) {
-    FD_LOG_WARNING(( "source pubkey not found" ));
+    FD_LOG_WARNING(( "source pubkey not found %s", FD_BASE58_ENC_32_ALLOCA(source) ));
     return NULL;
   }
 
