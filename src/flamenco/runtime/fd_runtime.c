@@ -3954,6 +3954,8 @@ fd_runtime_block_execute_tpool( fd_exec_slot_ctx_t *    slot_ctx,
                                 fd_spad_t * *           spads,
                                 ulong                   spad_cnt ) {
   FD_SCRATCH_SCOPE_BEGIN {
+    uchar dump_block = capture_ctx && slot_ctx->slot_bank.slot >= capture_ctx->dump_proto_start_slot && capture_ctx->dump_block_to_pb;
+
     if ( capture_ctx != NULL && capture_ctx->capture ) {
       fd_solcap_writer_set_slot( capture_ctx->capture, slot_ctx->slot_bank.slot );
     }
@@ -3963,6 +3965,10 @@ fd_runtime_block_execute_tpool( fd_exec_slot_ctx_t *    slot_ctx,
     int res = fd_runtime_block_execute_prepare( slot_ctx );
     if( res != FD_RUNTIME_EXECUTE_SUCCESS ) {
       return res;
+    }
+
+    if( dump_block ) {
+      fd_dump_block_to_protobuf( block_info, slot_ctx, capture_ctx );
     }
 
     ulong txn_cnt = block_info->txn_cnt;
