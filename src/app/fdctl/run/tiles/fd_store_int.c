@@ -186,6 +186,7 @@ during_frag( fd_store_tile_ctx_t * ctx,
       FD_LOG_ERR(( "chunk %lu %lu corrupt, not in range [%lu,%lu]", chunk, sz,
             ctx->stake_in_chunk0, ctx->stake_in_wmark ));
     uchar const * dcache_entry = fd_chunk_to_laddr_const( ctx->stake_in_mem, chunk );
+    FD_LOG_NOTICE(("Yunhao: identity_key=%s, during_frag", FD_BASE58_ENC_32_ALLOCA(&ctx->stake_ci->identity_key[0])));
     fd_stake_ci_stake_msg_init( ctx->stake_ci, dcache_entry );
     return;
   }
@@ -244,6 +245,7 @@ after_frag( fd_store_tile_ctx_t * ctx,
   (void)stem;
 
   if( FD_UNLIKELY( in_idx==STAKE_IN_IDX ) ) {
+    FD_LOG_NOTICE(("Yunhao: identity_key=%s, after_frag", FD_BASE58_ENC_32_ALLOCA(&ctx->stake_ci->identity_key[0])));
     fd_stake_ci_stake_msg_fini( ctx->stake_ci );
     return;
   }
@@ -583,6 +585,7 @@ unprivileged_init( fd_topo_t *      topo,
   ctx->store = fd_store_join( fd_store_new( FD_SCRATCH_ALLOC_APPEND( l, fd_store_align(), fd_store_footprint() ), 1 ) );
   ctx->repair_req_buffer = FD_SCRATCH_ALLOC_APPEND( l, alignof(fd_repair_request_t), MAX_REPAIR_REQS * sizeof(fd_repair_request_t) );
   ctx->stake_ci = fd_stake_ci_join( fd_stake_ci_new( FD_SCRATCH_ALLOC_APPEND( l, fd_stake_ci_align(), fd_stake_ci_footprint() ), ctx->identity_key ) );
+  FD_LOG_NOTICE(("Yunhao: identity_key=%s, init", FD_BASE58_ENC_32_ALLOCA(&ctx->stake_ci->identity_key[0])));
 
   void * trusted_slots_mem = FD_SCRATCH_ALLOC_APPEND( l, fd_trusted_slots_align(), fd_trusted_slots_footprint( MAX_SLOTS_PER_EPOCH ) );
   ctx->trusted_slots = fd_trusted_slots_join( fd_trusted_slots_new( trusted_slots_mem, MAX_SLOTS_PER_EPOCH ) );
