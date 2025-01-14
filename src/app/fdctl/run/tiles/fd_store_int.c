@@ -186,7 +186,7 @@ during_frag( fd_store_tile_ctx_t * ctx,
       FD_LOG_ERR(( "chunk %lu %lu corrupt, not in range [%lu,%lu]", chunk, sz,
             ctx->stake_in_chunk0, ctx->stake_in_wmark ));
     uchar const * dcache_entry = fd_chunk_to_laddr_const( ctx->stake_in_mem, chunk );
-    FD_LOG_NOTICE(("Yunhao: identity_key=%s, during_frag", FD_BASE58_ENC_32_ALLOCA(&ctx->stake_ci->identity_key[0])));
+    FD_LOG_NOTICE(("Yunhao: identity_key=%s, ctx=%p, identity_key=%p, during_frag", FD_BASE58_ENC_32_ALLOCA(&ctx->stake_ci->identity_key[0]), (void*)ctx, (void*)ctx->stake_ci->identity_key));
     fd_stake_ci_stake_msg_init( ctx->stake_ci, dcache_entry );
     return;
   }
