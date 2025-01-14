@@ -109,6 +109,7 @@ fd_shred_dest_new( void                           * mem,
   pubkey_to_idx_t * pubkey_to_idx_map = pubkey_to_idx_join( pubkey_to_idx_new( _map, lg_cnt ) );
   for( ulong i=0UL; i<cnt; i++ ) {
     pubkey_to_idx_insert( pubkey_to_idx_map, info[i].pubkey )->idx = i;
+    FD_LOG_NOTICE(("Yunhao: insert pubkey %s to pubkey_to_idx_map", FD_BASE58_ENC_32_ALLOCA(&info[i].pubkey)));
   }
   pubkey_to_idx_t * query = pubkey_to_idx_query( pubkey_to_idx_map, *source, NULL );
   if( FD_UNLIKELY( !query ) ) {
