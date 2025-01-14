@@ -1018,10 +1018,11 @@ _block_context_create_and_exec( fd_exec_instr_test_runner_t *        runner,
   }
 
   /* Set up epoch bank */
+  /* TODO: Which of these do we need? */
   fd_epoch_bank_t * epoch_bank = fd_exec_epoch_ctx_epoch_bank( epoch_ctx );
+
   // epoch_bank->stakes = ... // fd_unlikely that we need this
   // self.max_tick_height = (self.slot + 1) * self.ticks_per_slot;
-  // 
   epoch_bank->hashes_per_tick       = test_ctx->epoch_ctx.hashes_per_tick;
   epoch_bank->genesis_creation_time = test_ctx->epoch_ctx.genesis_creation_time;
   epoch_bank->ticks_per_slot        = test_ctx->epoch_ctx.ticks_per_slot;
@@ -1071,9 +1072,9 @@ _block_context_create_and_exec( fd_exec_instr_test_runner_t *        runner,
   fd_runtime_sysvar_cache_load( slot_ctx );
 
   /* Finish init slot and epoch bank */
-  epoch_bank->epoch_schedule = *slot_ctx->sysvar_cache->val_epoch_schedule;
+  epoch_bank->epoch_schedule      = *slot_ctx->sysvar_cache->val_epoch_schedule;
   epoch_bank->rent_epoch_schedule = *slot_ctx->sysvar_cache->val_epoch_schedule;
-  epoch_bank->rent = *slot_ctx->sysvar_cache->val_rent;
+  epoch_bank->rent                = *slot_ctx->sysvar_cache->val_rent;
 
   /* Calculate epoch account hash values. This sets epoch_bank.eah_{start_slot, stop_slot, interval} */
   fd_calculate_epoch_accounts_hash_values( slot_ctx );
@@ -1222,9 +1223,9 @@ _txn_context_destroy( fd_exec_instr_test_runner_t * runner,
 
 static void
 _block_context_destroy( fd_exec_instr_test_runner_t * runner,
-                      fd_exec_slot_ctx_t *            slot_ctx,
-                      fd_wksp_t *                     wksp,
-                      fd_alloc_t *                    alloc ) {
+                        fd_exec_slot_ctx_t *            slot_ctx,
+                        fd_wksp_t *                     wksp,
+                        fd_alloc_t *                    alloc ) {
   if( !slot_ctx ) return; // This shouldn't be false either
   fd_acc_mgr_t *        acc_mgr   = slot_ctx->acc_mgr;
   fd_funk_txn_t *       funk_txn  = slot_ctx->funk_txn;
