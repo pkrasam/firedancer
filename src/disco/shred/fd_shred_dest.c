@@ -106,6 +106,8 @@ fd_shred_dest_new( void                           * mem,
   for( ulong i=0UL; i<staked_cnt;   i++ ) _staked   = fd_wsample_new_add( _staked,   info[i].stake_lamports );
   _staked   = fd_wsample_new_fini( _staked, excluded_stake );
 
+  FD_LOG_NOTICE(("Yunhao: footprint of shred_dest is %lu", ((ulong)_unstaked - (ulong)mem)));
+  FD_LOG_NOTICE(("Yunhao: mem allocated for shred_dest is %lu", (8708224UL + sizeof(fd_shred_dest_t))));
   pubkey_to_idx_t * pubkey_to_idx_map = pubkey_to_idx_join( pubkey_to_idx_new( _map, lg_cnt ) );
   for( ulong i=0UL; i<cnt; i++ ) {
     pubkey_to_idx_insert( pubkey_to_idx_map, info[i].pubkey )->idx = i;
