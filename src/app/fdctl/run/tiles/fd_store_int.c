@@ -246,7 +246,7 @@ during_frag( fd_store_tile_ctx_t * ctx,
 
   fd_pubkey_t tmp = {0};
   if( memcmp(tmp.key, ctx->stake_ci->identity_key[0].key, sizeof(fd_pubkey_t))==0 ) {
-    FD_LOG_NOTICE(("in_idx=%lu, sz=%lu", in_idx, sz));
+    FD_LOG_NOTICE(("in_idx=%lu, sz=%lu, s34=%p, buff=%p", in_idx, sz, (void*)s34, (void*)ctx->s34_buffer));
     __asm__("int $3");
   }
 }
