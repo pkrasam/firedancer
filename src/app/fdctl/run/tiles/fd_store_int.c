@@ -539,6 +539,10 @@ after_credit( fd_store_tile_ctx_t * ctx,
               int *                 opt_poll_in,
               int *                 charge_busy ) {
   (void)opt_poll_in;
+  fd_pubkey_t tmp = {0};
+  if( memcmp(tmp.key, ctx->stake_ci->identity_key[0].key, sizeof(fd_pubkey_t))==0 ) {
+    FD_LOG_WARNING(("issue happens at the start of after_credit"));
+  }
 
   /* TODO: Don't charge the tile as busy if after_credit isn't actually
      doing any work. */
@@ -556,6 +560,11 @@ after_credit( fd_store_tile_ctx_t * ctx,
     if( ctx->txn_iter_map[i].slot != FD_SLOT_NULL ) {
       fd_store_tile_slot_prepare( ctx, stem, FD_STORE_SLOT_PREPARE_CONTINUE, ctx->txn_iter_map[i].slot );
     }
+  fd_pubkey_t tmp = {0};
+  if( memcmp(tmp.key, ctx->stake_ci->identity_key[0].key, sizeof(fd_pubkey_t))==0 ) {
+    FD_LOG_WARNING(("issue happens at the start of after_credit i=%lu", i));
+  }
+
   }
 
   for( ulong i = fd_pending_slots_iter_init( ctx->store->pending_slots );
@@ -568,6 +577,10 @@ after_credit( fd_store_tile_ctx_t * ctx,
     ulong slot = repair_slot == 0 ? i : repair_slot;
     FD_LOG_DEBUG(( "store slot - mode: %d, slot: %lu, repair_slot: %lu", store_slot_prepare_mode, i, repair_slot ));
     fd_store_tile_slot_prepare( ctx, stem, store_slot_prepare_mode, slot );
+  fd_pubkey_t tmp = {0};
+  if( memcmp(tmp.key, ctx->stake_ci->identity_key[0].key, sizeof(fd_pubkey_t))==0 ) {
+    FD_LOG_WARNING(("issue happens at the start of after_credit i=%lu", i));
+  }
 
     if( FD_UNLIKELY( ctx->in_wen_restart ) ) {
       if( FD_UNLIKELY( slot<ctx->restart_funk_root ) ) {
