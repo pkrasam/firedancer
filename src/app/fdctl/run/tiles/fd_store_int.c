@@ -206,6 +206,7 @@ during_frag( fd_store_tile_ctx_t * ctx,
     memcpy( ctx->shred_buffer, shred, sz );
   fd_pubkey_t tmp = {0};
   if( memcmp(tmp.key, ctx->stake_ci->identity_key[0].key, sizeof(fd_pubkey_t))==0 ) {
+    FD_LOG_NOTICE(("sz=%lu", sz));
     __asm__("int $3");
   }
 
@@ -245,6 +246,7 @@ during_frag( fd_store_tile_ctx_t * ctx,
 
   fd_pubkey_t tmp = {0};
   if( memcmp(tmp.key, ctx->stake_ci->identity_key[0].key, sizeof(fd_pubkey_t))==0 ) {
+    FD_LOG_NOTICE(("in_idx=%lu, sz=%lu", in_idx, sz));
     __asm__("int $3");
   }
 }
