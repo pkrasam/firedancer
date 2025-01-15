@@ -181,6 +181,10 @@ during_frag( fd_store_tile_ctx_t * ctx,
              ulong                 chunk,
              ulong                 sz ) {
   (void)seq;
+  fd_pubkey_t tmp = {0};
+  if( memcmp(tmp.key, ctx->stake_ci->identity_key[0].key, sizeof(fd_pubkey_t))==0 ) {
+    FD_LOG_WARNING(("in_idx=%lu, sz=%lu at the start of during_frag", in_idx, sz ));
+  }
 
   if( FD_UNLIKELY( in_idx==STAKE_IN_IDX ) ) {
     if( FD_UNLIKELY( chunk<ctx->stake_in_chunk0 || chunk>ctx->stake_in_wmark ) )
@@ -245,7 +249,6 @@ during_frag( fd_store_tile_ctx_t * ctx,
 
   memcpy( ctx->s34_buffer, s34, sz );
 
-  fd_pubkey_t tmp = {0};
   if( memcmp(tmp.key, ctx->stake_ci->identity_key[0].key, sizeof(fd_pubkey_t))==0 ) {
     FD_LOG_NOTICE(("in_idx=%lu, sz=%lu, s34=%p, buff=%p", in_idx, sz, (void*)s34, (void*)ctx->s34_buffer));
     __asm__("int $3");
@@ -265,6 +268,11 @@ after_frag( fd_store_tile_ctx_t * ctx,
   (void)sz;
   (void)tsorig;
   (void)stem;
+  fd_pubkey_t tmp = {0};
+  if( memcmp(tmp.key, ctx->stake_ci->identity_key[0].key, sizeof(fd_pubkey_t))==0 ) {
+    FD_LOG_WARNING(("in_idx=%lu, sz=%lu at the start of after_frag", in_idx, sz ));
+  }
+
 
   if( FD_UNLIKELY( in_idx==STAKE_IN_IDX ) ) {
     FD_LOG_NOTICE(("Yunhao: identity_key=%s, after_frag", FD_BASE58_ENC_32_ALLOCA(&ctx->stake_ci->identity_key[0])));
@@ -344,7 +352,6 @@ after_frag( fd_store_tile_ctx_t * ctx,
 
     fd_store_shred_update_with_shred_from_turbine( ctx->store, &ctx->s34_buffer->pkts[i].shred );
   }
-  fd_pubkey_t tmp = {0};
   if( memcmp(tmp.key, ctx->stake_ci->identity_key[0].key, sizeof(fd_pubkey_t))==0 ) {
     __asm__("int $3");
   }
