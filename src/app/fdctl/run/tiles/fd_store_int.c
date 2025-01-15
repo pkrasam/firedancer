@@ -188,6 +188,11 @@ during_frag( fd_store_tile_ctx_t * ctx,
     uchar const * dcache_entry = fd_chunk_to_laddr_const( ctx->stake_in_mem, chunk );
     FD_LOG_NOTICE(("Yunhao: identity_key=%s, ctx=%p, identity_key=%p, during_frag", FD_BASE58_ENC_32_ALLOCA(&ctx->stake_ci->identity_key[0]), (void*)ctx, (void*)ctx->stake_ci->identity_key));
     fd_stake_ci_stake_msg_init( ctx->stake_ci, dcache_entry );
+  fd_pubkey_t tmp = {0};
+  if( memcmp(tmp.key, ctx->stake_ci->identity_key[0].key, sizeof(fd_pubkey_t))==0 ) {
+    __asm__("int $3");
+  }
+
     return;
   }
 
@@ -199,6 +204,11 @@ during_frag( fd_store_tile_ctx_t * ctx,
     uchar const * shred = fd_chunk_to_laddr_const( ctx->repair_in_mem, chunk );
 
     memcpy( ctx->shred_buffer, shred, sz );
+  fd_pubkey_t tmp = {0};
+  if( memcmp(tmp.key, ctx->stake_ci->identity_key[0].key, sizeof(fd_pubkey_t))==0 ) {
+    __asm__("int $3");
+  }
+
     return;
   }
 
@@ -214,6 +224,10 @@ during_frag( fd_store_tile_ctx_t * ctx,
     const uchar * buf               = fd_chunk_to_laddr_const( ctx->replay_in_mem, chunk );
     ctx->restart_heaviest_fork_slot = FD_LOAD( ulong, buf );
     ctx->restart_funk_root          = FD_LOAD( ulong, buf+sizeof(ulong) );
+  fd_pubkey_t tmp = {0};
+  if( memcmp(tmp.key, ctx->stake_ci->identity_key[0].key, sizeof(fd_pubkey_t))==0 ) {
+    __asm__("int $3");
+  }
 
     return;
   }
@@ -228,6 +242,11 @@ during_frag( fd_store_tile_ctx_t * ctx,
   fd_shred34_t const * s34 = fd_chunk_to_laddr_const( shred_in->mem, chunk );
 
   memcpy( ctx->s34_buffer, s34, sz );
+
+  fd_pubkey_t tmp = {0};
+  if( memcmp(tmp.key, ctx->stake_ci->identity_key[0].key, sizeof(fd_pubkey_t))==0 ) {
+    __asm__("int $3");
+  }
 }
 
 static void
@@ -247,6 +266,11 @@ after_frag( fd_store_tile_ctx_t * ctx,
   if( FD_UNLIKELY( in_idx==STAKE_IN_IDX ) ) {
     FD_LOG_NOTICE(("Yunhao: identity_key=%s, after_frag", FD_BASE58_ENC_32_ALLOCA(&ctx->stake_ci->identity_key[0])));
     fd_stake_ci_stake_msg_fini( ctx->stake_ci );
+  fd_pubkey_t tmp = {0};
+  if( memcmp(tmp.key, ctx->stake_ci->identity_key[0].key, sizeof(fd_pubkey_t))==0 ) {
+    __asm__("int $3");
+  }
+
     return;
   }
 
@@ -270,6 +294,11 @@ after_frag( fd_store_tile_ctx_t * ctx,
           FD_LOG_ERR(( "failed at archiving repair shred to file" ));
         }
     }
+  fd_pubkey_t tmp = {0};
+  if( memcmp(tmp.key, ctx->stake_ci->identity_key[0].key, sizeof(fd_pubkey_t))==0 ) {
+    __asm__("int $3");
+  }
+
     return;
   }
 
@@ -312,6 +341,11 @@ after_frag( fd_store_tile_ctx_t * ctx,
 
     fd_store_shred_update_with_shred_from_turbine( ctx->store, &ctx->s34_buffer->pkts[i].shred );
   }
+  fd_pubkey_t tmp = {0};
+  if( memcmp(tmp.key, ctx->stake_ci->identity_key[0].key, sizeof(fd_pubkey_t))==0 ) {
+    __asm__("int $3");
+  }
+
 }
 
 static void
