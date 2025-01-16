@@ -8,7 +8,10 @@
 #include "../fd_executor.h"
 #include "../fd_hashes.h"
 #include "../fd_runtime.h"
+#include "../../stakes/fd_stakes.h"
 #include "../program/fd_bpf_loader_program.h"
+#include "../program/fd_vote_program.h"
+#include "../program/fd_stake_program.h"
 #include "../program/fd_bpf_program_util.h"
 #include "../program/fd_builtin_programs.h"
 #include "../context/fd_exec_epoch_ctx.h"
@@ -998,28 +1001,32 @@ _block_context_create_and_exec( fd_exec_instr_test_runner_t *        runner,
   // slot_bank->block_height = test_ctx->prev_slot + 1UL; // do we need this?
   // slot_bank->last_restart_slot = ...; // get this from sysvar cache
 
-  /* Set up epoch context */
-  ulong vote_acc_cnt = test_ctx->epoch_ctx.vote_accounts_count;
-  if( FD_UNLIKELY( vote_acc_cnt==0UL ) ) {
-    FD_LOG_WARNING(( "Vote accounts cnt is 0" ));
-    return 1;
-  }
-
-  fd_stake_weight_t *  stake_weights     = fd_scratch_alloc( alignof(fd_stake_weight_t), vote_acc_cnt * sizeof(fd_stake_weight_t) );
-  for( ushort i=0; i<vote_acc_cnt; i++ ) {
-    fd_memcpy(  &stake_weights[i].key, &test_ctx->epoch_ctx.vote_accounts[i].pubkey, sizeof(fd_stake_weight_t) );
-    stake_weights[i].stake = test_ctx->epoch_ctx.vote_accounts[i].delegated_stake;
-  }
-  void *               epoch_leaders_mem = fd_exec_epoch_ctx_leaders( slot_ctx->epoch_ctx );
-  fd_epoch_leaders_t * leaders           = fd_epoch_leaders_join( fd_epoch_leaders_new( epoch_leaders_mem, 0UL, slot, 1UL, vote_acc_cnt, stake_weights, 0UL ) );
-  if( FD_UNLIKELY( leaders==NULL ) ) {
-    FD_LOG_WARNING(( "Leaders is null" ));
-    return 1;
-  }
-
-  /* Set up epoch bank */
+  /* Set up epoch context and epoch bank */
   /* TODO: Which of these do we need? */
-  fd_epoch_bank_t * epoch_bank = fd_exec_epoch_ctx_epoch_bank( epoch_ctx );
+  fd_epoch_bank_t *   epoch_bank    = fd_exec_epoch_ctx_epoch_bank( epoch_ctx );
+  fd_stake_weight_t * stake_weights = fd_scratch_alloc( alignof(fd_stake_weight_t), vote_acct_max * sizeof(fd_stake_weight_t) );
+  // ulong               vote_acc_cnt  = 0UL;
+
+  // for( pb_size_t i=0; i<test_ctx->epoch_ctx.vote_accounts_count; i++ ) {
+  //   if( test_ctx->epoch_ctx.vote_accounts[i].delegated_stake==0UL ) {
+  //     continue;
+  //   }
+  //   fd_memcpy( &stake_weights[vote_acc_cnt].key, &test_ctx->epoch_ctx.vote_accounts[vote_acc_cnt].pubkey, sizeof(fd_stake_weight_t) );
+  //   stake_weights[vote_acc_cnt].stake = test_ctx->epoch_ctx.vote_accounts[vote_acc_cnt].delegated_stake;
+  //   vote_acc_cnt++;
+  // }
+
+  // if( FD_UNLIKELY( vote_acc_cnt==0UL ) ) {
+  //   FD_LOG_WARNING(( "Vote accounts cnt is 0" )); // TODO: comment this out when running
+  //   return 1;
+  // }
+
+  // void *               epoch_leaders_mem = fd_exec_epoch_ctx_leaders( slot_ctx->epoch_ctx );
+  // fd_epoch_leaders_t * leaders           = fd_epoch_leaders_join( fd_epoch_leaders_new( epoch_leaders_mem, 0UL, slot, 1UL, vote_acc_cnt, stake_weights, 0UL ) );
+  // if( FD_UNLIKELY( leaders==NULL ) ) {
+  //   FD_LOG_WARNING(( "Leaders is null" )); // TODO: comment out when running
+  //   return 1;
+  // }
 
   // epoch_bank->stakes = ... // fd_unlikely that we need this
   // self.max_tick_height = (self.slot + 1) * self.ticks_per_slot;
@@ -1033,19 +1040,37 @@ _block_context_create_and_exec( fd_exec_instr_test_runner_t *        runner,
   fd_runtime_init_program( slot_ctx );
   fd_funk_end_write( runner->funk );
 
+  /* Initialize stakes and caches */
+  slot_bank->stake_account_keys.stake_accounts_root = NULL;
+  slot_bank->stake_account_keys.stake_accounts_pool = fd_stake_accounts_pair_t_map_alloc( fd_scratch_virtual(), vote_acct_max );
+
+  slot_bank->vote_account_keys.vote_accounts_root = NULL;
+  slot_bank->vote_account_keys.vote_accounts_pool = fd_vote_accounts_pair_t_map_alloc( fd_scratch_virtual(), vote_acct_max );
+
   /* Load in accounts; accounts are loaded in the same way as the txn harness, where 0-lamport accounts are 0-set */
   for( ushort i=0; i<test_ctx->acct_states_count; i++ ) {
-    // TODO: Once the recent blockhashes PR gets merged, what we do with the recent blockhashes account does not matter
-    // since we will be conformant with Agave. We just need an Agave function to replace the blockhash queue in the bank.
-
-    // // Skip recent blockhashes sysvar account, if somehow present
-    // if( FD_UNLIKELY( !memcmp( test_ctx->acct_states[i].address, fd_sysvar_recent_block_hashes_id.uc, sizeof(fd_pubkey_t) ) ) ) {
-    //   continue;
-    // }
     FD_BORROWED_ACCOUNT_DECL(acc);
 
-    // Override any initialized sysvar accounts
-    _load_txn_account( acc, acc_mgr, funk_txn, &test_ctx->acct_states[i], 1 );
+    // Override any duplicate accounts
+    int res = _load_txn_account( acc, acc_mgr, funk_txn, &test_ctx->acct_states[i], 1 );
+    if( FD_UNLIKELY( !res ) ) {
+      continue;
+    }
+
+    // Insert into the vote and stakes cache
+    fd_vote_store_account( slot_ctx, acc, runner->spad );
+    fd_store_stake_delegation( slot_ctx, acc );
+  }
+
+  /* Update leader schedule */
+  fd_stake_weight_t *  weights           = fd_scratch_alloc( alignof(fd_stake_weight_t), vote_acct_max * sizeof(fd_stake_weight_t) );
+  ulong                weight_cnt        = fd_stake_weights_by_node( &slot_bank->vote_account_keys, weights );
+  void *               epoch_leaders_mem = fd_exec_epoch_ctx_leaders( slot_ctx->epoch_ctx );
+
+  fd_epoch_leaders_t * leaders           = fd_epoch_leaders_join( fd_epoch_leaders_new( epoch_leaders_mem, 0UL, slot, 1UL, weight_cnt, stake_weights, 0UL ) );
+  if( FD_UNLIKELY( leaders==NULL ) ) {
+    FD_LOG_WARNING(( "Leaders is null" )); // TODO: comment out when running
+    return 1;
   }
 
   /* Initialize the blockhash queue and recent blockhashes sysvar from the input blockhash queue */

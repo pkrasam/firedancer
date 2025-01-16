@@ -446,21 +446,46 @@ create_block_context_protobuf_from_block( fd_exec_test_block_context_t * block_c
   block_context->epoch_ctx.ticks_per_slot             = epoch_ctx->epoch_bank.ticks_per_slot;
   block_context->epoch_ctx.genesis_creation_time      = epoch_ctx->epoch_bank.genesis_creation_time;
 
-  // Dump the stake (TODO) and vote accounts
+  // Dump the stake and vote accounts
   fd_vote_accounts_t const * vote_accounts = &epoch_ctx->epoch_bank.stakes.vote_accounts;
-  ulong vote_account_cnt = fd_vote_accounts_pair_t_map_size( vote_accounts->vote_accounts_pool, vote_accounts->vote_accounts_root );
+  // ulong vote_account_cnt = fd_vote_accounts_pair_t_map_size( vote_accounts->vote_accounts_pool, vote_accounts->vote_accounts_root );
   
-  block_context->epoch_ctx.vote_accounts       = fd_scratch_alloc( alignof(fd_exec_test_vote_acct_t), vote_account_cnt * sizeof(fd_exec_test_vote_acct_t) );
-  block_context->epoch_ctx.vote_accounts_count = 0UL;
+  // block_context->epoch_ctx.vote_accounts       = fd_scratch_alloc( alignof(fd_exec_test_vote_acct_t), vote_account_cnt * sizeof(fd_exec_test_vote_acct_t) );
+  // block_context->epoch_ctx.vote_accounts_count = 0UL;
 
   for( fd_vote_accounts_pair_t_mapnode_t * curr = fd_vote_accounts_pair_t_map_minimum(
           vote_accounts->vote_accounts_pool,
           vote_accounts->vote_accounts_root );
       curr;
       curr = fd_vote_accounts_pair_t_map_successor( vote_accounts->vote_accounts_pool, curr ) ) {
-    fd_exec_test_vote_acct_t * out_vote_account = &block_context->epoch_ctx.vote_accounts[block_context->epoch_ctx.vote_accounts_count++];
-    fd_memcpy( out_vote_account->pubkey, &curr->elem.key, sizeof(fd_pubkey_t));
-    out_vote_account->delegated_stake = curr->elem.stake;
+    dump_account_if_not_already_dumped( slot_ctx, &curr->elem.key, block_context->acct_states, &block_context->acct_states_count, NULL );
+
+    // Skip nodes with 0 stake weight
+    // if( curr->elem.stake==0UL ) {
+    //   continue;
+    // }
+
+    // fd_exec_test_vote_acct_t * out_vote_account = &block_context->epoch_ctx.vote_accounts[block_context->epoch_ctx.vote_accounts_count++];
+    // fd_memcpy( out_vote_account->pubkey, &curr->elem.key, sizeof(fd_pubkey_t));
+    // out_vote_account->delegated_stake = curr->elem.stake;
+  }
+
+  // ulong stake_account_cnt = fd_delegation_pair_t_map_size( epoch_ctx->epoch_bank.stakes.stake_delegations_pool, epoch_ctx->epoch_bank.stakes.stake_delegations_root );
+  for( fd_delegation_pair_t_mapnode_t * curr = fd_delegation_pair_t_map_minimum(
+          epoch_ctx->epoch_bank.stakes.stake_delegations_pool,
+          epoch_ctx->epoch_bank.stakes.stake_delegations_root );
+      curr;
+      curr = fd_delegation_pair_t_map_successor( epoch_ctx->epoch_bank.stakes.stake_delegations_pool, curr ) ) {
+    dump_account_if_not_already_dumped( slot_ctx, &curr->elem.account, block_context->acct_states, &block_context->acct_states_count, NULL );
+
+    // Skip nodes with 0 stake weight
+    // if( curr->elem.stake==0UL ) {
+    //   continue;
+    // }
+
+    // fd_exec_test_vote_acct_t * out_vote_account = &block_context->epoch_ctx.vote_accounts[block_context->epoch_ctx.vote_accounts_count++];
+    // fd_memcpy( out_vote_account->pubkey, &curr->elem.key, sizeof(fd_pubkey_t));
+    // out_vote_account->delegated_stake = curr->elem.stake;
   }
 }
 

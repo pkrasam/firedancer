@@ -120,6 +120,8 @@ fd_runtime_update_leaders( fd_exec_slot_ctx_t * slot_ctx, ulong slot ) {
       FD_LOG_ERR(("fd_scratch_alloc() failed"));
     }
 
+    FD_LOG_WARNING(( "vote_acc_cnt=%lu", vote_acc_cnt ));
+
     ulong stake_weight_cnt = fd_stake_weights_by_node(epoch_vaccs, epoch_weights);
 
     if( FD_UNLIKELY( stake_weight_cnt == ULONG_MAX ) ) {
@@ -4085,6 +4087,8 @@ fd_runtime_block_eval_tpool( fd_exec_slot_ctx_t * slot_ctx,
     fd_blockstore_end_read( slot_ctx->blockstore );
 
     fd_runtime_block_pre_execute_process_new_epoch( slot_ctx );
+
+    fd_vote_account_map
 
     fd_blockstore_start_read( slot_ctx->blockstore );
     fd_block_t * block = fd_blockstore_block_query( slot_ctx->blockstore, slot );
