@@ -2814,7 +2814,7 @@ unprivileged_init( fd_topo_t *      topo,
   }
 
   /* replay public setup */
-  ulong replay_obj_id = fd_pod_queryf_ulong( topo->props, ULONG_MAX, "replay_publuc" );
+  ulong replay_obj_id = fd_pod_queryf_ulong( topo->props, ULONG_MAX, "replay_pub" );
   FD_TEST( replay_obj_id!=ULONG_MAX );
   ctx->replay_public_wksp = topo->workspaces[ topo->objs[ replay_obj_id ].wksp_id ].wksp;
 

@@ -47,9 +47,9 @@ setup_topo_blockstore( fd_topo_t *  topo,
   return obj;
 }
 
-static fd_topo_obj_t *
-setup_topo_replay_public( fd_topo_t *  topo, char const * wksp_name ) {
-  fd_topo_obj_t * obj = fd_topob_obj( topo, "replay_public", wksp_name );
+fd_topo_obj_t *
+setup_topo_replay_pub( fd_topo_t *  topo, char const * wksp_name ) {
+  fd_topo_obj_t * obj = fd_topob_obj( topo, "replay_p", wksp_name );
 
   FD_TEST( fd_pod_insertf_ulong( topo->props, 12UL,        "obj.%lu.wksp_tag",   obj->id ) );
 
@@ -154,7 +154,7 @@ fd_topo_initialize( config_t * config ) {
   fd_topob_wksp( topo, "gossip"     );
   fd_topob_wksp( topo, "metric"     );
   fd_topob_wksp( topo, "replay"     );
-  fd_topob_wksp( topo, "replay_public" );
+  fd_topob_wksp( topo, "replay_pub" );
   fd_topob_wksp( topo, "rtpool"     );
   fd_topob_wksp( topo, "bhole"      );
   fd_topob_wksp( topo, "bstore"     );
@@ -299,10 +299,10 @@ fd_topo_initialize( config_t * config ) {
 
   FD_TEST( fd_pod_insertf_ulong( topo->props, blockstore_obj->id, "blockstore" ) );
 
-  fd_topo_obj_t * replay_public_obj = setup_topo_replay_public( topo, "replay_public" );
-  fd_topob_tile_uses( topo, replay_tile, replay_public_obj, FD_SHMEM_JOIN_MODE_READ_WRITE );
-  fd_topob_tile_uses( topo, snaps_tile,  replay_public_obj, FD_SHMEM_JOIN_MODE_READ_ONLY );
-  FD_TEST( fd_pod_insertf_ulong( topo->props, replay_public_obj->id, "replay_public" ) );
+  /*fd_topo_obj_t *  replay_pub_obj = */ setup_topo_replay_pub( topo, "replay_pub" );
+  //fd_topob_tile_uses( topo, replay_tile, replay_pub_obj, FD_SHMEM_JOIN_MODE_READ_WRITE );
+  //fd_topob_tile_uses( topo, snaps_tile,  replay_pub_obj, FD_SHMEM_JOIN_MODE_READ_ONLY );
+  //FD_TEST( fd_pod_insertf_ulong( topo->props, replay_pub_obj->id, "replay_p" ) );
 
   /* Create a txncache to be used by replay. */
   fd_topo_obj_t * txncache_obj = setup_topo_txncache( topo, "tcache", FD_TXNCACHE_DEFAULT_MAX_ROOTED_SLOTS, FD_TXNCACHE_DEFAULT_MAX_LIVE_SLOTS, MAX_CACHE_TXNS_PER_SLOT );
