@@ -193,6 +193,7 @@ struct fd_replay_tile_ctx {
   char const * blockstore_checkpt;
   int          tx_metadata_storage;
   char const * funk_checkpt;
+  ulong        funk_checkpt_interval;
   char const * genesis;
   char const * incremental;
   char const * snapshot;
@@ -1838,6 +1839,14 @@ after_frag( fd_replay_tile_ctx_t * ctx,
     }
 
     fd_bank_hash_cmp_unlock( bank_hash_cmp );
+
+    if ( curr_slot % ctx->funk_checkpt_interval == 0 ) {
+      fd_funk_start_write( ctx->slot_ctx->acc_mgr->funk );
+      unlink( ctx->funk_checkpt );
+      fd_wksp_checkpt_tpool( NULL, 0UL, 1UL, ctx->funk_wksp, ctx->funk_checkpt, 0666, 0, NULL);
+      fd_funk_end_write( ctx->slot_ctx->acc_mgr->funk );
+    }
+
   } // end of if( FD_UNLIKELY( ( flags & REPLAY_FLAG_FINISHED_BLOCK ) ) )
 
   /**********************************************************************/
@@ -2458,12 +2467,13 @@ unprivileged_init( fd_topo_t *      topo,
   /* TOML paths                                                         */
   /**********************************************************************/
 
-  ctx->blockstore_checkpt  = tile->replay.blockstore_checkpt;
-  ctx->tx_metadata_storage = tile->replay.tx_metadata_storage;
-  ctx->funk_checkpt        = tile->replay.funk_checkpt;
-  ctx->genesis             = tile->replay.genesis;
-  ctx->incremental         = tile->replay.incremental;
-  ctx->snapshot            = tile->replay.snapshot;
+  ctx->blockstore_checkpt    = tile->replay.blockstore_checkpt;
+  ctx->tx_metadata_storage   = tile->replay.tx_metadata_storage;
+  ctx->funk_checkpt          = tile->replay.funk_checkpt;
+  ctx->funk_checkpt_interval = tile->replay.funk_checkpt_interval;
+  ctx->genesis               = tile->replay.genesis;
+  ctx->incremental           = tile->replay.incremental;
+  ctx->snapshot              = tile->replay.snapshot;
 
   /**********************************************************************/
   /* alloc                                                              */
