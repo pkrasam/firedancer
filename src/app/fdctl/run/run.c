@@ -13,6 +13,7 @@
 #include "../../../waltz/xdp/fd_xdp1.h"
 #include "../../../flamenco/runtime/fd_blockstore.h"
 #include "../../../flamenco/runtime/fd_txncache.h"
+#include "../../../flamenco/runtime/fd_runtime.h"
 #include "../../../funk/fd_funk_filemap.h"
 #include "../../../funk/fd_funk.h"
 #include "../configure/configure.h"
@@ -530,6 +531,8 @@ fdctl_obj_new( fd_topo_t const *     topo,
     FD_TEST( fd_cnc_new( laddr, 0UL, 0, fd_tickcount() ) );
   } else if( FD_UNLIKELY( !strcmp( obj->name, "fseq" ) ) ) {
     FD_TEST( fd_fseq_new( laddr, ULONG_MAX ) );
+  } else if( FD_UNLIKELY( !strcmp( obj->name, "replay_p" ) ) ) {
+    FD_TEST( fd_runtime_public_new( laddr ) );
   } else if( FD_UNLIKELY( !strcmp( obj->name, "metrics" ) ) ) {
     FD_TEST( fd_metrics_new( laddr, VAL("in_cnt"), VAL("cons_cnt") ) );
   } else if( FD_UNLIKELY( !strcmp( obj->name, "ulong" ) ) ) {

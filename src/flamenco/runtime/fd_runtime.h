@@ -464,6 +464,11 @@ fd_runtime_public_join ( void * ptr ) ;
 void *
 fd_runtime_public_new ( void * ptr ) ;
 
+FD_FN_CONST static inline ulong
+fd_runtime_public_align( void ) {
+  return alignof(fd_runtime_public_t);
+}
+
 FD_PROTOTYPES_END
 
 #endif /* HEADER_fd_src_flamenco_runtime_fd_runtime_h */

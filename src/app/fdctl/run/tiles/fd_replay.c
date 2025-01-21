@@ -2822,7 +2822,7 @@ unprivileged_init( fd_topo_t *      topo,
     FD_LOG_ERR(( "no replay_public workspace" ));
   }
 
-  ctx->replay_public = fd_runtime_public_join( fd_runtime_public_new( fd_topo_obj_laddr( topo, replay_obj_id ) ) );
+  ctx->replay_public = fd_runtime_public_join( fd_topo_obj_laddr( topo, replay_obj_id ) );
   FD_TEST( ctx->replay_public!=NULL );
 }
 
