@@ -1210,11 +1210,11 @@ fd_runtime_block_verify_ticks( fd_blockstore_t * blockstore,
   while ( batch_idx <= query->slot_complete_idx ) {
     batch_cnt++;
     ulong batch_sz = 0;
-    FD_TEST( fd_blockstore_batch_assemble( blockstore, 
-                                           slot, 
-                                           (uint) batch_idx, 
-                                           scratch_sz, 
-                                           scratch_mem, 
+    FD_TEST( fd_blockstore_batch_assemble( blockstore,
+                                           slot,
+                                           (uint) batch_idx,
+                                           scratch_sz,
+                                           scratch_mem,
                                            &batch_sz ) == FD_BLOCKSTORE_OK );
     ulong micro_cnt = FD_LOAD( ulong, scratch_mem );
     ulong       off = sizeof(ulong);
@@ -4422,3 +4422,20 @@ fd_runtime_collect_rent_accounts_prune( ulong slot, fd_exec_slot_ctx_t * slot_ct
 //
 // What slots exactly do cache'd account_updates go into?  how are
 // they hashed (which slot?)?
+
+ulong
+fd_runtime_public_footprint ( void ) {
+  return sizeof(fd_runtime_public_t);
+}
+
+fd_runtime_public_t *
+fd_runtime_public_join ( void * ptr )
+{
+  return (fd_runtime_public_t *) ptr;
+}
+
+void *
+fd_runtime_public_new ( void * ptr )  {
+  fd_memset(ptr, 0, sizeof(fd_runtime_public_t));
+  return ptr;
+}
