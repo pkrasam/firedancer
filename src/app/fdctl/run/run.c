@@ -531,7 +531,7 @@ fdctl_obj_new( fd_topo_t const *     topo,
     FD_TEST( fd_cnc_new( laddr, 0UL, 0, fd_tickcount() ) );
   } else if( FD_UNLIKELY( !strcmp( obj->name, "fseq" ) ) ) {
     FD_TEST( fd_fseq_new( laddr, ULONG_MAX ) );
-  } else if( FD_UNLIKELY( !strcmp( obj->name, "replay_p" ) ) ) {
+  } else if( FD_UNLIKELY( !strcmp( obj->name, "replay_pub" ) ) ) {
     FD_TEST( fd_runtime_public_new( laddr ) );
   } else if( FD_UNLIKELY( !strcmp( obj->name, "metrics" ) ) ) {
     FD_TEST( fd_metrics_new( laddr, VAL("in_cnt"), VAL("cons_cnt") ) );
