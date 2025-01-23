@@ -217,12 +217,14 @@ FD_STATIC_ASSERT( FD_BPF_ALIGN_OF_U128==FD_ACCOUNT_REC_DATA_ALIGN, input_data_al
 #define FD_RUNTIME_TRANSACTION_EXECUTION_FOOTPRINT_FUZZ    FD_RUNTIME_TRANSACTION_EXECUTION_FOOTPRINT(64UL, 0)
 #define FD_RUNTIME_TRANSACTION_EXECUTION_FOOTPRINT_DEFAULT FD_RUNTIME_TRANSACTION_EXECUTION_FOOTPRINT(64UL, 0)
 
-/* Helpers for runtime public frame management. */
+/* definition of the public/readable workspace */
 struct fd_runtime_public {
   ulong         epoch;
   fd_features_t features;
 };
 typedef struct fd_runtime_public fd_runtime_public_t;
+
+/* Helpers for runtime public frame management. */
 
 /* Helpers for runtime spad frame management. */
 struct fd_runtime_spad_verify_handle_private {
