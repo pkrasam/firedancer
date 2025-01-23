@@ -2162,6 +2162,10 @@ init_snapshot( fd_replay_tile_ctx_t * ctx,
 
   fd_fork_t * fork = fd_forks_query( ctx->forks, ctx->curr_slot );
   ctx->slot_ctx = &fork->slot_ctx;
+
+  // Tell the world about the current activate features
+  fd_memcpy ( &ctx->replay_public->features,  &ctx->slot_ctx->epoch_ctx->features, sizeof(ctx->replay_public->features) );
+
   FD_TEST( ctx->slot_ctx );
 }
 
