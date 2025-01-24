@@ -1252,7 +1252,7 @@ replay( fd_ledger_args_t * args ) {
 #else
   // Enable this when leak hunting
   fd_valloc_t valloc2 = allocator_setup( args->wksp, args->allocator );
-  fd_valloc_t valloc = fd_backtracing_alloc_virtual ( &valloc2 );
+  args->valloc = fd_backtracing_alloc_virtual ( &valloc2 );
 #endif
 
   void * epoch_ctx_mem = fd_wksp_alloc_laddr( args->wksp, fd_exec_epoch_ctx_align(),
@@ -1271,7 +1271,7 @@ replay( fd_ledger_args_t * args ) {
 
   fd_runtime_ctx_t runtime_ctx[1];
   fd_runtime_ctx_new(runtime_ctx);
-  runtime_ctx->private_valloc = valloc;
+  runtime_ctx->private_valloc = args->valloc;
   runtime_ctx->public = fd_runtime_public_join( runtime_public_mem );
 
   fd_features_enable_cleaned_up( &args->epoch_ctx->features, args->epoch_ctx->epoch_bank.cluster_version );

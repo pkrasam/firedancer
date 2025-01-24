@@ -1975,7 +1975,7 @@ read_snapshot( void *              _ctx,
     if( strlen( incremental )>0UL ) {
       uchar *                  tmp_mem      = fd_scratch_alloc( fd_snapshot_load_ctx_align(), fd_snapshot_load_ctx_footprint() );
       /* TODO: enable snapshot verification */
-      fd_snapshot_load_ctx_t * tmp_snap_ctx = fd_snapshot_load_new( tmp_mem, incremental, ctx->slot_ctx, ctx->tpool, false, false, FD_SNAPSHOT_TYPE_FULL, ctx->valloc );
+      fd_snapshot_load_ctx_t * tmp_snap_ctx = fd_snapshot_load_new( tmp_mem, incremental, ctx->slot_ctx, NULL, ctx->tpool, false, false, FD_SNAPSHOT_TYPE_FULL, ctx->valloc );
       /* Load the prefetch manifest, and initialize the status cache and slot context,
          so that we can use these to kick off repair. */
       fd_snapshot_load_prefetch_manifest( tmp_snap_ctx );
@@ -1990,7 +1990,7 @@ read_snapshot( void *              _ctx,
 
     uchar *                  mem      = fd_scratch_alloc( fd_snapshot_load_ctx_align(), fd_snapshot_load_ctx_footprint() );
     /* TODO: enable snapshot verification */
-    fd_snapshot_load_ctx_t * snap_ctx = fd_snapshot_load_new( mem, snapshot, ctx->slot_ctx, ctx->tpool, false, false, FD_SNAPSHOT_TYPE_FULL, ctx->valloc );
+    fd_snapshot_load_ctx_t * snap_ctx = fd_snapshot_load_new( mem, snapshot, ctx->slot_ctx, NULL, ctx->tpool, false, false, FD_SNAPSHOT_TYPE_FULL, ctx->valloc );
     fd_snapshot_load_init( snap_ctx );
 
     /* If we don't have an incremental snapshot, load the manifest and the status cache and initialize
@@ -2029,7 +2029,7 @@ read_snapshot( void *              _ctx,
     /* The slot of the full snapshot should be used as the base slot to verify the incremental snapshot,
        not the slot context's slot - which is the slot of the incremental, not the full snapshot. */
     /* TODO: enable snapshot verification */
-    fd_snapshot_load_all( incremental, ctx->slot_ctx, &base_slot, ctx->tpool, false, false, FD_SNAPSHOT_TYPE_INCREMENTAL, ctx->valloc );
+    fd_snapshot_load_all( incremental, ctx->slot_ctx, NULL, &base_slot, ctx->tpool, false, false, FD_SNAPSHOT_TYPE_INCREMENTAL, ctx->valloc );
   }
 
   if( ctx->replay_plugin_out_mem ) {

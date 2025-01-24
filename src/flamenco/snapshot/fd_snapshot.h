@@ -68,7 +68,7 @@ fd_snapshot_load_ctx_t *
 fd_snapshot_load_new( uchar *                mem,
                       const char *           snapshot_file,
                       fd_exec_slot_ctx_t *   slot_ctx,
-                      fd_runtime_ctx_t   *   runtime_ctx
+                      fd_runtime_ctx_t   *   runtime_ctx,
                       fd_tpool_t *           tpool,
                       uint                   verify_hash,
                       uint                   check_hash,
