@@ -23,6 +23,7 @@
 #include "../../ballet/base58/fd_base58.h"
 #include "../../flamenco/types/fd_solana_block.pb.h"
 #include "../../flamenco/runtime/context/fd_capture_ctx.h"
+#include "../../flamenco/runtime/context/fd_runtime_ctx.h"
 #include "../../flamenco/runtime/fd_blockstore.h"
 #include "../../flamenco/runtime/program/fd_builtin_programs.h"
 #include "../../flamenco/shredcap/fd_shredcap.h"
@@ -1144,11 +1145,11 @@ ingest( fd_ledger_args_t * args ) {
 
   /* Load in snapshot(s) */
   if( args->snapshot ) {
-    fd_snapshot_load_all( args->snapshot, slot_ctx, NULL, args->tpool, args->verify_acc_hash, args->check_acc_hash , FD_SNAPSHOT_TYPE_FULL, args->valloc );
+    fd_snapshot_load_all( args->snapshot, slot_ctx, NULL, NULL, args->tpool, args->verify_acc_hash, args->check_acc_hash , FD_SNAPSHOT_TYPE_FULL, args->valloc );
     FD_LOG_NOTICE(( "imported %lu records from snapshot", fd_funk_rec_cnt( fd_funk_rec_map( funk, fd_funk_wksp( funk ) ) ) ));
   }
   if( args->incremental ) {
-    fd_snapshot_load_all( args->incremental, slot_ctx, NULL, args->tpool, args->verify_acc_hash, args->check_acc_hash, FD_SNAPSHOT_TYPE_INCREMENTAL, args->valloc );
+    fd_snapshot_load_all( args->incremental, slot_ctx, NULL, NULL, args->tpool, args->verify_acc_hash, args->check_acc_hash, FD_SNAPSHOT_TYPE_INCREMENTAL, args->valloc );
     FD_LOG_NOTICE(( "imported %lu records from incremental snapshot", fd_funk_rec_cnt( fd_funk_rec_map( funk, fd_funk_wksp( funk ) ) ) ));
   }
 
@@ -1265,6 +1266,14 @@ replay( fd_ledger_args_t * args ) {
   args->epoch_ctx->epoch_bank.cluster_version[1] = args->cluster_version[1];
   args->epoch_ctx->epoch_bank.cluster_version[2] = args->cluster_version[2];
 
+  void * runtime_public_mem = fd_wksp_alloc_laddr( args->wksp, fd_runtime_public_align(), fd_runtime_public_footprint( ), FD_EXEC_EPOCH_CTX_MAGIC );
+  fd_memset( runtime_public_mem, 0, fd_runtime_public_footprint( ) );
+
+  fd_runtime_ctx_t runtime_ctx[1];
+  fd_runtime_ctx_new(runtime_ctx);
+  runtime_ctx->private_valloc = valloc;
+  runtime_ctx->public = fd_runtime_public_join( runtime_public_mem );
+
   fd_features_enable_cleaned_up( &args->epoch_ctx->features, args->epoch_ctx->epoch_bank.cluster_version );
   fd_features_enable_one_offs( &args->epoch_ctx->features, args->one_off_features, args->one_off_features_cnt, 0UL );
 
@@ -1297,6 +1306,7 @@ replay( fd_ledger_args_t * args ) {
     if( args->snapshot ) {
       fd_snapshot_load_all( args->snapshot,
                             args->slot_ctx,
+                            runtime_ctx,
                             NULL,
                             args->tpool,
                             args->verify_acc_hash,
@@ -1308,6 +1318,7 @@ replay( fd_ledger_args_t * args ) {
     if( args->incremental ) {
       fd_snapshot_load_all( args->incremental,
                             args->slot_ctx,
+                            runtime_ctx,
                             NULL,
                             args->tpool,
                             args->verify_acc_hash,
@@ -1367,11 +1378,11 @@ prune( fd_ledger_args_t * args ) {
   if( !rec_cnt ) {
     /* Load in snapshot(s) */
     if( args->snapshot ) {
-      fd_snapshot_load_all( args->snapshot, args->slot_ctx, NULL, args->tpool, args->verify_acc_hash, args->check_acc_hash, FD_SNAPSHOT_TYPE_FULL, args->valloc );
+      fd_snapshot_load_all( args->snapshot, args->slot_ctx, NULL, NULL, args->tpool, args->verify_acc_hash, args->check_acc_hash, FD_SNAPSHOT_TYPE_FULL, args->valloc );
       FD_LOG_NOTICE(( "imported %lu records from snapshot", fd_funk_rec_cnt( fd_funk_rec_map( funk, fd_funk_wksp( funk ) ) ) ));
     }
     if( args->incremental ) {
-      fd_snapshot_load_all( args->incremental, args->slot_ctx, NULL, args->tpool, args->verify_acc_hash, args->check_acc_hash, FD_SNAPSHOT_TYPE_INCREMENTAL, args->valloc );
+      fd_snapshot_load_all( args->incremental, args->slot_ctx, NULL, NULL, args->tpool, args->verify_acc_hash, args->check_acc_hash, FD_SNAPSHOT_TYPE_INCREMENTAL, args->valloc );
       FD_LOG_NOTICE(( "imported %lu records from snapshot", fd_funk_rec_cnt( fd_funk_rec_map( funk, fd_funk_wksp( funk ) ) ) ));
     }
   }
@@ -1474,11 +1485,11 @@ prune( fd_ledger_args_t * args ) {
 
   /* Load in snapshot(s) */
   if( args->snapshot ) {
-    fd_snapshot_load_all( args->snapshot, args->slot_ctx, NULL, args->tpool, 0, 0, FD_SNAPSHOT_TYPE_FULL, args->valloc );
+    fd_snapshot_load_all( args->snapshot, args->slot_ctx, NULL, NULL, args->tpool, 0, 0, FD_SNAPSHOT_TYPE_FULL, args->valloc );
     FD_LOG_NOTICE(( "reload: imported %lu records from snapshot", fd_funk_rec_cnt( fd_funk_rec_map( funk, fd_funk_wksp( funk ) ) ) ));
   }
   if( args->incremental ) {
-    fd_snapshot_load_all( args->incremental, args->slot_ctx, NULL, args->tpool, 0, 0, FD_SNAPSHOT_TYPE_INCREMENTAL, args->valloc );
+    fd_snapshot_load_all( args->incremental, args->slot_ctx, NULL, NULL, args->tpool, 0, 0, FD_SNAPSHOT_TYPE_INCREMENTAL, args->valloc );
     FD_LOG_NOTICE(( "reload: imported %lu records from snapshot", fd_funk_rec_cnt( fd_funk_rec_map( funk, fd_funk_wksp( funk ) ) ) ));
   }
 
