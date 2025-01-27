@@ -7,6 +7,7 @@
 #include "../runtime/fd_system_ids.h"
 #include "../runtime/context/fd_exec_epoch_ctx.h"
 #include "../runtime/context/fd_exec_slot_ctx.h"
+#include "../runtime/context/fd_runtime_ctx.h"
 #include "../rewards/fd_rewards.h"
 
 #include <assert.h>
@@ -92,8 +93,7 @@ fd_snapshot_load_new( uchar *                mem,
                       fd_tpool_t *           tpool,
                       uint                   verify_hash,
                       uint                   check_hash,
-                      int                    snapshot_type,
-                      fd_valloc_t            valloc ) {
+                      int                    snapshot_type ) {
 
   fd_snapshot_load_ctx_t * ctx = (fd_snapshot_load_ctx_t *)mem;
   ctx->snapshot_file = snapshot_file;
@@ -103,7 +103,7 @@ fd_snapshot_load_new( uchar *                mem,
   ctx->verify_hash   = verify_hash;
   ctx->check_hash    = check_hash;
   ctx->snapshot_type = snapshot_type;
-  ctx->valloc        = valloc;
+  ctx->valloc        = runtime_ctx->private_valloc;
   return ctx;
 }
 
@@ -296,13 +296,12 @@ fd_snapshot_load_all( const char *         source_cstr,
                       fd_tpool_t *         tpool,
                       uint                 verify_hash,
                       uint                 check_hash,
-                      int                  snapshot_type,
-                      fd_valloc_t          valloc ) {
+                      int                  snapshot_type ) {
 
   FD_SCRATCH_SCOPE_BEGIN {
 
   uchar *                  mem = fd_scratch_alloc( fd_snapshot_load_ctx_align(), fd_snapshot_load_ctx_footprint() );
-  fd_snapshot_load_ctx_t * ctx = fd_snapshot_load_new( mem, source_cstr, slot_ctx, runtime_ctx, tpool, verify_hash, check_hash, snapshot_type, valloc );
+  fd_snapshot_load_ctx_t * ctx = fd_snapshot_load_new( mem, source_cstr, slot_ctx, runtime_ctx, tpool, verify_hash, check_hash, snapshot_type );
 
   fd_snapshot_load_init( ctx );
   fd_snapshot_load_manifest_and_status_cache( ctx, base_slot_override,
