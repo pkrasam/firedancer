@@ -398,7 +398,7 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
     uchar * out_buf = fd_chunk_to_laddr( ctx->replay_out_mem, ctx->replay_out_chunk );
 
     fd_blockstore_start_read( ctx->blockstore );
-    fd_block_map_t * block_map_entry = fd_blockstore_block_map_query( ctx->blockstore, slot );
+    fd_block_meta_t * block_map_entry = fd_blockstore_block_map_query( ctx->blockstore, slot );
     fd_block_t * block = fd_blockstore_block_query( ctx->blockstore, slot );
 
     if( block == NULL ) { /* needed later down below for txn iteration */
@@ -408,17 +408,15 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
     if( block_map_entry == NULL ) {
       FD_LOG_ERR(( "could not find slot meta" ));
     }
-
-    fd_hash_t const * block_hash = fd_blockstore_block_hash_query( ctx->blockstore, slot );
+    FD_STORE( ulong, out_buf, block_map_entry->parent_slot );
     fd_blockstore_end_read( ctx->blockstore );
-    if( block_hash == NULL ) {
+    out_buf += sizeof(ulong);
+    int err = fd_blockstore_block_hash_query( ctx->blockstore, slot, out_buf, sizeof(fd_hash_t) );
+    if( FD_UNLIKELY( err ) ){
       FD_LOG_ERR(( "could not find slot meta" ));
     }
+    fd_hash_t * block_hash = fd_type_pun( out_buf );
 
-    FD_STORE( ulong, out_buf, block_map_entry->parent_slot );
-    out_buf += sizeof(ulong);
-
-    memcpy( out_buf, block_hash->uc, sizeof(fd_hash_t) );
     out_buf += sizeof(fd_hash_t);
 
     FD_SCRATCH_SCOPE_BEGIN {
@@ -491,7 +489,7 @@ after_credit( fd_store_tile_ctx_t * ctx,
     int store_slot_prepare_mode = fd_store_slot_prepare( ctx->store, i, &repair_slot );
 
     ulong slot = repair_slot == 0 ? i : repair_slot;
-    FD_LOG_DEBUG(( "store slot - mode: %d, slot: %lu, repair_slot: %lu", store_slot_prepare_mode, i, repair_slot ));
+    FD_LOG_INFO(( "store slot - mode: %d, slot: %lu, repair_slot: %lu", store_slot_prepare_mode, i, repair_slot ));
     fd_store_tile_slot_prepare( ctx, stem, store_slot_prepare_mode, slot );
 
     if( FD_UNLIKELY( ctx->in_wen_restart ) ) {
@@ -544,7 +542,7 @@ unprivileged_init( fd_topo_t *      topo,
                    strcmp( topo->links[ tile->out_link_id[ REPLAY_OUT_IDX ] ].name, "store_replay" ) ||
                    strcmp( topo->links[ tile->out_link_id[ REPAIR_OUT_IDX ] ].name, "store_repair" ) ) )
     FD_LOG_ERR(( "store tile has none or unexpected output links %lu %s",
-                 tile->out_cnt, topo->links[ tile->out_link_id[ 0 ] ].name ));
+                 tile->out_cnt, topo->links[ tile->out_link_id[ 0 ] ].name ));;
 
   /* Scratch mem setup */
 
@@ -713,11 +711,11 @@ unprivileged_init( fd_topo_t *      topo,
 
     ulong cnt = 1;
     fd_blockstore_start_write( ctx->blockstore );
-    FD_TEST( fd_block_map_remove( fd_blockstore_block_map (ctx->blockstore), &snapshot_slot ) );
+    FD_TEST( fd_blockstore_block_meta_remove( ctx->blockstore, snapshot_slot ) );
     while( fgets( buf, sizeof( buf ), file ) ) {
       char *       endptr;
       ulong        slot  = strtoul( buf, &endptr, 10 );
-      fd_block_map_t * block_map_entry        = fd_blockstore_block_map_query( ctx->blockstore, slot );
+      fd_block_meta_t * block_map_entry        = fd_blockstore_block_map_query( ctx->blockstore, slot );
                        block_map_entry->flags = 0;
       fd_store_add_pending( ctx->store, slot, (long)cnt++, 0, 0 );
     }

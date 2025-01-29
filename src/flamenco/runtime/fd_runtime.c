@@ -1125,7 +1125,7 @@ fd_runtime_microblock_verify_ticks( fd_exec_slot_ctx_t *        slot_ctx,
     an error.
   */
   fd_blockstore_start_write( slot_ctx->blockstore );
-  fd_block_map_t * query = fd_blockstore_block_map_query( slot_ctx->blockstore, slot );
+  fd_block_meta_t * query = fd_blockstore_block_map_query( slot_ctx->blockstore, slot );
   FD_TEST( query != NULL );
 
   query->tick_hash_count_accum = fd_ulong_sat_add( query->tick_hash_count_accum, hdr->hash_cnt );
@@ -1201,7 +1201,7 @@ fd_runtime_block_verify_ticks( fd_blockstore_t * blockstore,
     an error.
    */
   fd_blockstore_start_read( blockstore );
-  fd_block_map_t * query = fd_blockstore_block_map_query( blockstore, slot );
+  fd_block_meta_t * query = fd_blockstore_block_map_query( blockstore, slot );
   FD_TEST( query->slot_complete_idx != FD_SHRED_IDX_NULL );
 
   uint   batch_cnt = 0;
@@ -1452,7 +1452,7 @@ fd_runtime_prepare_txns_start( fd_exec_slot_ctx_t *         slot_ctx,
   int res = 0;
   /* Loop across transactions */
   for( ulong txn_idx = 0UL; txn_idx < txn_cnt; txn_idx++ ) {
-    fd_txn_p_t * txn = &txns[txn_idx];
+  fd_txn_p_t * txn = &txns[txn_idx];
 
     /* Allocate/setup transaction context and task infos */
     task_info[txn_idx].txn_ctx      = fd_spad_alloc( runtime_spad, FD_EXEC_TXN_CTX_ALIGN, FD_EXEC_TXN_CTX_FOOTPRINT );
@@ -3876,21 +3876,18 @@ fd_runtime_block_eval_tpool( fd_exec_slot_ctx_t * slot_ctx,
     /* Use the blockhash as the funk xid */
     fd_funk_txn_xid_t xid;
 
-    fd_blockstore_start_read( slot_ctx->blockstore );
-    fd_hash_t const * hash = fd_blockstore_block_hash_query( slot_ctx->blockstore, slot );
-    if( FD_UNLIKELY( !hash ) ) {
+    int err = fd_blockstore_block_hash_query( slot_ctx->blockstore, slot, xid.uc, sizeof(fd_funk_txn_xid_t) );
+    if( FD_UNLIKELY( err ) ) {
       ret = FD_RUNTIME_EXECUTE_GENERIC_ERR;
       FD_LOG_WARNING(( "missing blockhash for %lu", slot ));
       break;
     } else {
-      fd_memcpy( xid.uc, hash->uc, sizeof(fd_funk_txn_xid_t) );
       xid.ul[0] = slot_ctx->slot_bank.slot;
       /* push a new transaction on the stack */
       fd_funk_start_write( funk );
       slot_ctx->funk_txn = fd_funk_txn_prepare( funk, slot_ctx->funk_txn, &xid, 1 );
       fd_funk_end_write( funk );
     }
-    fd_blockstore_end_read( slot_ctx->blockstore );
 
     if( FD_UNLIKELY( (ret = fd_runtime_block_pre_execute_process_new_epoch( slot_ctx,
                                                                             tpool,

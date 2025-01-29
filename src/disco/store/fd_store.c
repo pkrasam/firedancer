@@ -88,7 +88,6 @@ int
 fd_store_slot_prepare( fd_store_t *   store,
                        ulong          slot,
                        ulong *        repair_slot_out ) {
-  fd_blockstore_start_read( store->blockstore );
 
   ulong re_adds[2];
   uint re_adds_cnt           = 0U;
@@ -98,8 +97,8 @@ fd_store_slot_prepare( fd_store_t *   store,
   int rc = FD_STORE_SLOT_PREPARE_CONTINUE;
 
   bool block_complete = fd_blockstore_shreds_complete( store->blockstore, slot );
-  fd_block_map_t * block_map_entry = fd_blockstore_block_map_query( store->blockstore, slot );
-
+  fd_blockstore_start_read( store->blockstore );
+  fd_block_meta_t * block_map_entry = fd_blockstore_block_map_query( store->blockstore, slot );
 
   /* We already executed this block */
   if( FD_UNLIKELY( block_complete && fd_uchar_extract_bit( block_map_entry->flags, FD_BLOCK_FLAG_REPLAYING ) ) ) {
@@ -122,7 +121,7 @@ fd_store_slot_prepare( fd_store_t *   store,
   }
 
   ulong            parent_slot  = block_map_entry->parent_slot;
-  fd_block_map_t * parent_block_map_entry = fd_blockstore_block_map_query( store->blockstore, parent_slot );
+  fd_block_meta_t * parent_block_map_entry = fd_blockstore_block_map_query( store->blockstore, parent_slot );
 
   /* If the parent slot meta is missing, this block is an orphan and the ancestry needs to be
    * repaired before we can replay it. */
@@ -137,9 +136,7 @@ fd_store_slot_prepare( fd_store_t *   store,
     goto end;
   }
 
-  fd_blockstore_start_read( store->blockstore );
   bool parent_complete = fd_blockstore_shreds_complete( store->blockstore, parent_slot );
-  fd_blockstore_end_read( store->blockstore );
 
   /* We have a parent slot meta, and therefore have at least one shred of the parent block, so we
      have the ancestry and need to repair that block directly (as opposed to calling repair orphan).
@@ -195,6 +192,7 @@ end:
 int
 fd_store_shred_insert( fd_store_t * store,
                        fd_shred_t const * shred ) {
+  //long timer_st = fd_log_wallclock();
   if( FD_UNLIKELY( shred->version != store->expected_shred_version ) ) {
     FD_LOG_WARNING(( "received shred version %lu instead of %lu", (ulong)shred->version, store->expected_shred_version ));
     return FD_BLOCKSTORE_SUCCESS;
@@ -228,6 +226,7 @@ fd_store_shred_insert( fd_store_t * store,
 
   /* FIXME */
   if( FD_UNLIKELY( fd_blockstore_shreds_complete( blockstore, shred->slot ) ) ) {
+    FD_LOG_NOTICE(( "slot %lu complete", shred->slot ));
     fd_store_add_pending( store, shred->slot, (long)5e6, 0, 1 );
     return FD_BLOCKSTORE_SUCCESS_SLOT_COMPLETE;
   } else {
@@ -346,7 +345,7 @@ fd_store_slot_repair( fd_store_t * store,
 
   ulong repair_req_cnt = 0;
   fd_blockstore_start_read( store->blockstore );
-  fd_block_map_t * block_map_entry = fd_blockstore_block_map_query( store->blockstore, slot );
+  fd_block_meta_t * block_map_entry = fd_blockstore_block_map_query( store->blockstore, slot );
 
   if( FD_LIKELY( !block_map_entry ) ) {
     /* We haven't received any shreds for this slot yet */
@@ -382,7 +381,7 @@ fd_store_slot_repair( fd_store_t * store,
     for( uint i = 0; i < 6; ++i ) {
       anc_slot  = fd_blockstore_parent_slot_query( store->blockstore, anc_slot );
       bool anc_complete = fd_blockstore_shreds_complete( store->blockstore, anc_slot );
-      fd_block_map_t * anc_block_map_entry = fd_blockstore_block_map_query( store->blockstore, anc_slot );
+      fd_block_meta_t * anc_block_map_entry = fd_blockstore_block_map_query( store->blockstore, anc_slot );
       if( anc_complete && fd_uchar_extract_bit( anc_block_map_entry->flags, FD_BLOCK_FLAG_PROCESSED ) ) {
         good = 1;
         out_repair_reqs_sz /= (i>>1)+1U; /* Slow roll blocks that are further out */
