@@ -15,14 +15,6 @@ typedef struct {
   ulong       wmark;
 } fd_archiver_feeder_in_ctx_t;
 
-struct fd_archiver_feeder_stats {
-  ulong net_shred_in_cnt;
-  ulong quic_verify_in_cnt;
-  ulong net_gossip_in_cnt;
-  ulong net_repair_in_cnt;
-};
-typedef struct fd_archiver_feeder_stats fd_archiver_feeder_stats_t;
-
 struct fd_archiver_feeder_tile_ctx {  
   fd_wksp_t * out_mem;
   ulong       out_chunk0;
@@ -34,8 +26,6 @@ struct fd_archiver_feeder_tile_ctx {
 
   /* Map of input link idxs to header tile IDs */
   uint link_to_header_tile_ids[ FD_ARCHIVER_FEEDER_MAX_INPUT_LINKS ];
-
-  fd_archiver_feeder_stats_t stats;
 
   fd_archiver_feeder_in_ctx_t in[ FD_ARCHIVER_FEEDER_MAX_INPUT_LINKS ];
 };

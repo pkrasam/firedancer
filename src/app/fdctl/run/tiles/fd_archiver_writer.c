@@ -17,7 +17,15 @@
 #define FD_ARCHIVER_WRITER_OUT_BUF_SZ (10240UL)
 
 /* Initial size of the mmapped region. This will grow. */
-#define FD_ARCHIVER_WRITER_MMAP_INITIAL_SIZE  (16UL*1024UL*1024UL)
+#define FD_ARCHIVER_WRITER_MMAP_INITIAL_SIZE  (2147483648UL)
+
+struct fd_archiver_writer_stats {
+  ulong net_shred_in_cnt;
+  ulong quic_verify_in_cnt;
+  ulong net_gossip_in_cnt;
+  ulong net_repair_in_cnt;
+};
+typedef struct fd_archiver_writer_stats fd_archiver_writer_stats_t;
 
 typedef struct {
   fd_wksp_t * mem;
@@ -29,6 +37,7 @@ struct fd_archiver_writer_tile_ctx {
   double                      tick_per_ns;
   fd_archiver_writer_in_ctx_t in[ 32 ];
 
+  fd_archiver_writer_stats_t stats;
 
   int     archive_file_fd;
   uchar * mmap_addr;
@@ -139,12 +148,15 @@ unprivileged_init( fd_topo_t *      topo,
   ctx->mmap_off  = 0UL;
   ctx->mmap_addr = mmap( NULL,
                          ctx->mmap_size,
-                         PROT_READ | PROT_WRITE,
+                         PROT_WRITE,
                          MAP_SHARED,
                          tile->archiver.archive_fd,
                          0 );
   if( ctx->mmap_addr == MAP_FAILED ) {
     FD_LOG_ERR(( "failed to mmap archive file. errno=%i (%s)", errno, strerror(errno) ));
+  }
+  if( madvise( ctx->mmap_addr, ctx->mmap_size, MADV_SEQUENTIAL ) ) {
+    FD_LOG_WARNING(( "madvise(MADV_SEQUENTIAL) failed (%i-%s)", errno, strerror(errno) ));
   }
 
   /* Input links */
@@ -167,9 +179,15 @@ now( fd_archiver_writer_tile_ctx_t * ctx ) {
 
 static void
 during_housekeeping( fd_archiver_writer_tile_ctx_t * ctx ) {
-  if( msync( ctx->mmap_addr, ctx->mmap_size, MS_ASYNC ) != 0 ) {
-    FD_LOG_WARNING(( "msync failed. errno=%i", errno ));
-  }
+  // if( msync( ctx->mmap_addr, ctx->mmap_size, MS_ASYNC ) != 0 ) {
+  //   FD_LOG_WARNING(( "msync failed. errno=%i", errno ));
+  // }
+
+  FD_LOG_WARNING(( "writer stats: net_shred_in_cnt=%lu quic_verify_in_cnt=%lu net_gossip_in_cnt=%lu net_repair_in_cnt=%lu",
+    ctx->stats.net_shred_in_cnt,
+    ctx->stats.quic_verify_in_cnt,
+    ctx->stats.net_gossip_in_cnt,
+    ctx->stats.net_repair_in_cnt ));
 }
 
 /* Expand the mmap region if the next write would exceed the current size. */
@@ -190,6 +208,9 @@ resize_mmap( fd_archiver_writer_tile_ctx_t * ctx ) {
                            MREMAP_MAYMOVE );
   if( new_map == MAP_FAILED ) {
     FD_LOG_ERR(( "mremap failed: %i (%s)", errno, strerror(errno) ));
+  }
+  if( madvise( new_map, new_size, MADV_SEQUENTIAL ) ) {
+    FD_LOG_WARNING(( "madvise(MADV_SEQUENTIAL) after mremap failed (%i-%s)", errno, strerror(errno) ));
   }
 
   ctx->mmap_addr = (uchar *)new_map;
@@ -229,9 +250,21 @@ during_frag( fd_archiver_writer_tile_ctx_t * ctx,
   uchar * dst = ctx->mmap_addr + ctx->mmap_off;
   memcpy( dst, src, sz );
   ctx->mmap_off += sz;
+
+  /* Sanity-check header has not been overwritten */
+  fd_archiver_frag_header_t * written_header = fd_type_pun( dst );
+  if( FD_UNLIKELY(( written_header->magic != FD_ARCHIVER_HEADER_MAGIC )) ) {
+    FD_LOG_ERR(( "bad magic" ));
+  }
+
+  ctx->stats.net_repair_in_cnt  += header->tile_id == FD_ARCHIVER_TILE_ID_REPAIR;
+  ctx->stats.net_gossip_in_cnt  += header->tile_id == FD_ARCHIVER_TILE_ID_GOSSIP;
+  ctx->stats.net_shred_in_cnt   += header->tile_id == FD_ARCHIVER_TILE_ID_SHRED;
+  ctx->stats.quic_verify_in_cnt += header->tile_id == FD_ARCHIVER_TILE_ID_VERIFY;
 }
 
 #define STEM_BURST (1UL)
+#define STEM_LAZY  (2147483647)
 
 #define STEM_CALLBACK_CONTEXT_TYPE  fd_archiver_writer_tile_ctx_t
 #define STEM_CALLBACK_CONTEXT_ALIGN alignof(fd_archiver_writer_tile_ctx_t)

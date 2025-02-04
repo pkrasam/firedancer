@@ -4,6 +4,8 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <linux/unistd.h>
 #include <sys/socket.h>
@@ -14,9 +16,6 @@
 #define QUIC_VERIFY_OUT_IDX (1UL)
 #define NET_GOSSIP_OUT_IDX  (2UL)
 #define NET_REPAIR_OUT_IDX  (3UL)
-
-#define FD_ARCHIVER_PLAYBACK_ALLOC_TAG   (3UL)
-#define FD_ARCHIVER_PLAYBACK_READ_BUF_SZ (10240UL)
 
 struct fd_archiver_playback_stats {
   ulong net_shred_out_cnt;
@@ -34,15 +33,13 @@ typedef struct {
 } fd_archiver_playback_out_ctx_t;
 
 struct fd_archiver_playback_tile_ctx {
-  void * read_buf;
-  fd_io_buffered_istream_t archive_istream;
+  void * archive_map;
+  ulong  archive_size;
+  ulong  archive_off;
 
   fd_archiver_playback_stats_t stats;
 
   double tick_per_ns;
-
-  fd_alloc_t * alloc;
-  fd_valloc_t  valloc;
 
   long start_tile_ts_ns;
   long start_archive_frag_ts_ns;
@@ -104,7 +101,6 @@ scratch_footprint( fd_topo_tile_t const * tile ) {
   (void)tile;
   ulong l = FD_LAYOUT_INIT;
   l = FD_LAYOUT_APPEND( l, alignof(fd_archiver_playback_tile_ctx_t), sizeof(fd_archiver_playback_tile_ctx_t) );
-  l = FD_LAYOUT_APPEND( l, fd_alloc_align(), fd_alloc_footprint() );
   return FD_LAYOUT_FINI( l, scratch_align() );
 }
 
@@ -119,7 +115,6 @@ privileged_init( fd_topo_t *      topo,
     FD_SCRATCH_ALLOC_INIT( l, scratch );
     fd_archiver_playback_tile_ctx_t * ctx = FD_SCRATCH_ALLOC_APPEND( l, alignof(fd_archiver_playback_tile_ctx_t), sizeof(fd_archiver_playback_tile_ctx_t) ); 
     memset( ctx, 0, sizeof(fd_archiver_playback_tile_ctx_t) );
-    FD_SCRATCH_ALLOC_APPEND( l, fd_alloc_align(), fd_alloc_footprint() );
     FD_SCRATCH_ALLOC_FINI( l, scratch_align() );
 
     tile->archiver.archive_fd = open( tile->archiver.archive_path, O_RDONLY, 0666 );
@@ -135,10 +130,31 @@ unprivileged_init( fd_topo_t *      topo,
   void * scratch = fd_topo_obj_laddr( topo, tile->tile_obj_id );
   FD_SCRATCH_ALLOC_INIT( l, scratch );
   fd_archiver_playback_tile_ctx_t * ctx = FD_SCRATCH_ALLOC_APPEND( l, alignof(fd_archiver_playback_tile_ctx_t), sizeof(fd_archiver_playback_tile_ctx_t) );
-  void * alloc_shmem                  = FD_SCRATCH_ALLOC_APPEND( l, fd_alloc_align(), fd_alloc_footprint() );
   FD_SCRATCH_ALLOC_FINI( l, scratch_align() );
 
   ctx->tick_per_ns = fd_tempo_tick_per_ns( NULL );
+
+  /* mmap the file in */
+  struct stat st;
+  if( FD_UNLIKELY( fstat( tile->archiver.archive_fd, &st ) ) ) {
+    FD_LOG_ERR(( "fstat on archive fd failed (%i-%s)", errno, strerror(errno) ));
+  }
+  ctx->archive_size = (ulong)st.st_size;
+  void * map_addr = mmap( NULL, ctx->archive_size, PROT_READ, MAP_PRIVATE, tile->archiver.archive_fd, 0 );
+  if( FD_UNLIKELY( map_addr == MAP_FAILED ) ) {
+    FD_LOG_ERR(( "mmap of archive file failed (%i-%s)", errno, strerror(errno) ));
+  }
+  ctx->archive_map = map_addr;
+  ctx->archive_off = 0UL;
+
+  /* scan for the last non-zero byte - the archive file may have trailing zero bytes */
+  uchar * p         = (uchar *)map_addr;
+  for( long i=(long)ctx->archive_size - 1L; i>=0L; i-- ) {
+    if( p[i] != 0U ) {
+      ctx->archive_size = (ulong)i + 1UL;
+      break;
+    }
+  }
 
   /* Setup output links */
   for( ulong i=0; i<tile->out_cnt; i++ ) {
@@ -149,28 +165,6 @@ unprivileged_init( fd_topo_t *      topo,
     ctx->out[ i ].chunk0 = fd_dcache_compact_chunk0( link_wksp->wksp, link->dcache );
     ctx->out[ i ].wmark  = fd_dcache_compact_wmark( link_wksp->wksp, link->dcache, link->mtu );
     ctx->out[ i ].chunk  = ctx->out[ i ].chunk0;
-  }
-
-  /* Allocator */
-  ctx->alloc = fd_alloc_join( fd_alloc_new( alloc_shmem, FD_ARCHIVER_PLAYBACK_ALLOC_TAG ), fd_tile_idx() );
-  if( FD_UNLIKELY( !ctx->alloc ) ) {
-    FD_LOG_ERR( ( "fd_alloc_join failed" ) );
-  }
-  ctx->valloc = fd_alloc_virtual( ctx->alloc );
-
-  /* Allocate output buffer */
-  ctx->read_buf = fd_valloc_malloc( ctx->valloc, 1UL, FD_ARCHIVER_PLAYBACK_READ_BUF_SZ );
-  if( FD_UNLIKELY( !ctx->read_buf ) ) {
-    FD_LOG_ERR(( "failed to allocate read buffer" ));
-  }
-
-  /* Initialize output stream */
-  if( FD_UNLIKELY( !fd_io_buffered_istream_init( 
-    &ctx->archive_istream,
-    tile->archiver.archive_fd,
-    ctx->read_buf,
-    FD_ARCHIVER_PLAYBACK_READ_BUF_SZ ) ) ) {
-    FD_LOG_ERR(( "failed to initialize istream" ));
   }
 
 }
@@ -228,36 +222,27 @@ after_credit( fd_archiver_playback_tile_ctx_t *     ctx,
     }
   }
 
-  /* Consume the header, to determine which output link to send the fragment on. */
-  int fetch_err = fd_io_buffered_istream_fetch( &ctx->archive_istream );
-  if( FD_UNLIKELY( fetch_err<0 ) ) {
-    /* Hit EOF, nothing more to do */
-    /* TODO: gracefully shut down validator in this case? */
-    FD_LOG_WARNING(( "playback_stats net_shred_out_cnt=%lu, quic_verify_out_cnt=%lu, net_gossip_out_cnt=%lu, net_repair_out_cnt=%lu", ctx->stats.net_shred_out_cnt, ctx->stats.quic_verify_out_cnt, ctx->stats.net_gossip_out_cnt, ctx->stats.net_repair_out_cnt ));
-    FD_LOG_ERR(( "EOF" ));
-    return;
-  } else if( FD_UNLIKELY( fetch_err>0 ) ) {
-    FD_LOG_WARNING(( "playback_stats net_shred_out_cnt=%lu, quic_verify_out_cnt=%lu, net_gossip_out_cnt=%lu, net_repair_out_cnt=%lu", ctx->stats.net_shred_out_cnt, ctx->stats.quic_verify_out_cnt, ctx->stats.net_gossip_out_cnt, ctx->stats.net_repair_out_cnt ));
-    FD_LOG_ERR(( "failed to fetch" ));
-    return;
+  /* Check if we've reached EOF in the archive. */
+  if( FD_UNLIKELY( ctx->archive_off >= ctx->archive_size ||
+                   (ctx->archive_size - ctx->archive_off) < FD_ARCHIVER_FRAG_HEADER_FOOTPRINT ) ) {
+    FD_LOG_WARNING(( "playback_stats net_shred_out_cnt=%lu, quic_verify_out_cnt=%lu, net_gossip_out_cnt=%lu, net_repair_out_cnt=%lu",
+                     ctx->stats.net_shred_out_cnt,
+                     ctx->stats.quic_verify_out_cnt,
+                     ctx->stats.net_gossip_out_cnt,
+                     ctx->stats.net_repair_out_cnt ));
+    FD_LOG_ERR(( "end of archive file" ));
   }
-  ulong peek_sz = fd_io_buffered_istream_peek_sz( &ctx->archive_istream );
-  if( FD_UNLIKELY(( peek_sz < FD_ARCHIVER_FRAG_HEADER_FOOTPRINT )) ) {
-    return;
-  }
-  char const * peek_header = fd_io_buffered_istream_peek( &ctx->archive_istream );
-  if( FD_UNLIKELY(( !peek_header )) ) {
-    FD_LOG_ERR(( "failed to peek header" ));
-  }
-  fd_memcpy( &ctx->pending_publish_header, peek_header, FD_ARCHIVER_FRAG_HEADER_FOOTPRINT );
-  fd_io_buffered_istream_seek( &ctx->archive_istream, FD_ARCHIVER_FRAG_HEADER_FOOTPRINT );
 
-  /* Sanity-check the header */
-  if( FD_UNLIKELY(( ctx->pending_publish_header.magic != FD_ARCHIVER_HEADER_MAGIC )) ) {
-    FD_LOG_WARNING(( "stats: net_shred_out_cnt=%lu, quic_verify_out_cnt=%lu, net_gossip_out_cnt=%lu, net_repair_out_cnt=%lu", ctx->stats.net_shred_out_cnt, ctx->stats.quic_verify_out_cnt, ctx->stats.net_gossip_out_cnt, ctx->stats.net_repair_out_cnt ));
-    FD_LOG_ERR(( "bad magic: %lu", ctx->pending_publish_header.magic ));
+  /* Consume the header */
+  uchar const * hdr_ptr = (uchar const *)ctx->archive_map + ctx->archive_off;
+  fd_memcpy( &ctx->pending_publish_header, hdr_ptr, FD_ARCHIVER_FRAG_HEADER_FOOTPRINT );
+  ctx->archive_off += FD_ARCHIVER_FRAG_HEADER_FOOTPRINT;
+  if( FD_UNLIKELY( ctx->pending_publish_header.magic != FD_ARCHIVER_HEADER_MAGIC ) ) {
+    FD_LOG_ERR(( "bad magic in archive header: %lu", ctx->pending_publish_header.magic ));
   }
-  if( FD_UNLIKELY(( ctx->start_tile_ts_ns == 0UL )) ) {
+
+  /* On the very first fragment, initialize reference times. */
+  if( FD_UNLIKELY( ctx->start_tile_ts_ns == 0L ) ) {
     ctx->start_tile_ts_ns         = now( ctx );
     ctx->start_archive_frag_ts_ns = ctx->pending_publish_header.timestamp;
   }
@@ -285,19 +270,16 @@ after_credit( fd_archiver_playback_tile_ctx_t *     ctx,
     FD_LOG_ERR(( "unsupported tile id" ));
   }
 
-  /* Copy the frag into the output link */
-  peek_sz = fd_io_buffered_istream_peek_sz( &ctx->archive_istream );
-  if( FD_UNLIKELY(( peek_sz < ctx->pending_publish_header.sz )) ) {
-    FD_LOG_ERR(( "frag too small in archive, possibly corrupt archive" ));
+  /* Copy fragment from archive file into the output link, ready for publishing */
+  if( FD_UNLIKELY( (ctx->archive_size - ctx->archive_off) < ctx->pending_publish_header.sz ) ) {
+    FD_LOG_ERR(( "archive file too small" ));
   }
-  char const * peek_frag = fd_io_buffered_istream_peek( &ctx->archive_istream );
-  if( FD_UNLIKELY(( !peek_frag )) ) {
-    FD_LOG_ERR(( "failed to peek frag" ));
-  }
-  uchar * dst = (uchar *)fd_chunk_to_laddr( ctx->out[ out_link_idx ].mem, ctx->out[ out_link_idx ].chunk );
-  fd_memcpy( dst, peek_frag, ctx->pending_publish_header.sz );
-  fd_io_buffered_istream_seek( &ctx->archive_istream, ctx->pending_publish_header.sz );
   ctx->pending_publish_link_idx = out_link_idx;
+
+  uchar const * frag_ptr = (uchar const *)ctx->archive_map + ctx->archive_off;
+  uchar       * dst      = (uchar *)fd_chunk_to_laddr( ctx->out[ out_link_idx ].mem, ctx->out[ out_link_idx ].chunk );
+  fd_memcpy( dst, frag_ptr, ctx->pending_publish_header.sz );
+  ctx->archive_off += ctx->pending_publish_header.sz;
 }
 
 #define STEM_BURST (1UL)
