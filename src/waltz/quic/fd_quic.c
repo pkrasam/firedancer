@@ -834,7 +834,7 @@ fd_quic_conn_error1( fd_quic_conn_t * conn,
                      uint             reason ) {
   if( FD_UNLIKELY( !conn || conn->state == FD_QUIC_CONN_STATE_DEAD ) ) return;
 
-  conn->state  = FD_QUIC_CONN_STATE_ABORT;
+  fd_quic_set_conn_state( conn, FD_QUIC_CONN_STATE_ABORT );
   conn->reason = reason;
 
   /* set connection to be serviced ASAP */
@@ -1635,7 +1635,7 @@ fd_quic_handle_v1_initial( fd_quic_t *               quic,
       /* Create a TLS handshake */
 
       if( FD_UNLIKELY( !fd_quic_tls_hs_pool_free( state->hs_pool ) ) ) {
-        conn->state = FD_QUIC_CONN_STATE_DEAD;
+        fd_quic_set_conn_state( conn, FD_QUIC_CONN_STATE_DEAD );
         fd_quic_svc_schedule( state, conn, FD_QUIC_SVC_INSTANT );
         quic->metrics.conn_aborted_cnt++;
         quic->metrics.hs_err_alloc_fail_cnt++;
@@ -1678,7 +1678,7 @@ fd_quic_handle_v1_initial( fd_quic_t *               quic,
     /* As this is an INITIAL packet, change the status to DEAD, and allow
         it to be reaped */
     FD_DEBUG( FD_LOG_DEBUG(( "fd_quic_crypto_decrypt_hdr failed" )) );
-    conn->state = FD_QUIC_CONN_STATE_DEAD;
+    fd_quic_set_conn_state( conn, FD_QUIC_CONN_STATE_DEAD );
     fd_quic_svc_schedule( state, conn, FD_QUIC_SVC_INSTANT );
     quic->metrics.conn_aborted_cnt++;
     quic->metrics.pkt_decrypt_fail_cnt[ fd_quic_enc_level_initial_id ]++;
@@ -2751,7 +2751,7 @@ fd_quic_tls_cb_handshake_complete( fd_quic_tls_hs_t * hs,
         return;
       }
       conn->handshake_complete = 1;
-      conn->state              = FD_QUIC_CONN_STATE_HANDSHAKE_COMPLETE;
+      fd_quic_set_conn_state( conn, FD_QUIC_CONN_STATE_HANDSHAKE_COMPLETE );
       return;
 
     default:
@@ -2867,7 +2867,7 @@ fd_quic_svc_poll( fd_quic_t *      quic,
             conn->server?"SERVER":"CLIENT",
             (void *)conn, conn->conn_idx, (double)conn->idle_timeout / 1e6 )); )
 
-        conn->state = FD_QUIC_CONN_STATE_DEAD;
+        fd_quic_set_conn_state( conn, FD_QUIC_CONN_STATE_DEAD );
         quic->metrics.conn_timeout_cnt++;
       }
     } else if( FD_QUIC_KEEP_ALIVE ) {
@@ -3823,7 +3823,7 @@ fd_quic_conn_tx( fd_quic_t *      quic,
       FD_LOG_WARNING(( "fd_quic_crypto_encrypt failed" ));
 
       /* this situation is unlikely to improve, so kill the connection */
-      conn->state = FD_QUIC_CONN_STATE_DEAD;
+      fd_quic_set_conn_state( conn, FD_QUIC_CONN_STATE_DEAD );
       fd_quic_svc_schedule( state, conn, FD_QUIC_SVC_INSTANT );
       quic->metrics.conn_aborted_cnt++;
       break;
@@ -3916,7 +3916,7 @@ fd_quic_conn_service( fd_quic_t * quic, fd_quic_conn_t * conn, ulong now ) {
             conn->handshake_done_send = 1;
 
             /* move straight to ACTIVE */
-            conn->state = FD_QUIC_CONN_STATE_ACTIVE;
+            fd_quic_set_conn_state( conn, FD_QUIC_CONN_STATE_ACTIVE );
 
             /* RFC 9001 4.9.2. Discarding Handshake Keys
                > An endpoint MUST discard its Handshake keys when the
@@ -3958,7 +3958,7 @@ fd_quic_conn_service( fd_quic_t * quic, fd_quic_conn_t * conn, ulong now ) {
         fd_quic_conn_tx( quic, conn );
 
         /* schedule another fd_quic_conn_service to free the conn */
-        conn->state = FD_QUIC_CONN_STATE_DEAD; /* TODO need draining state wait for 3 * TPO */
+        fd_quic_set_conn_state( conn, FD_QUIC_CONN_STATE_DEAD );
         quic->metrics.conn_closed_cnt++;
         fd_quic_svc_schedule1( conn, FD_QUIC_SVC_INSTANT );
 
@@ -3969,7 +3969,7 @@ fd_quic_conn_service( fd_quic_t * quic, fd_quic_conn_t * conn, ulong now ) {
         fd_quic_conn_tx( quic, conn );
 
         /* schedule another fd_quic_conn_service to free the conn */
-        conn->state = FD_QUIC_CONN_STATE_DEAD;
+        fd_quic_set_conn_state( conn, FD_QUIC_CONN_STATE_DEAD );
         quic->metrics.conn_aborted_cnt++;
         fd_quic_svc_schedule1( conn, FD_QUIC_SVC_INSTANT );
 
@@ -4005,7 +4005,7 @@ fd_quic_conn_free( fd_quic_t *      quic,
   }
 
   FD_COMPILER_MFENCE();
-  conn->state = FD_QUIC_CONN_STATE_INVALID;
+  fd_quic_set_conn_state( conn, FD_QUIC_CONN_STATE_INVALID );
   FD_COMPILER_MFENCE();
 
   fd_quic_state_t * state = fd_quic_get_state( quic );
@@ -4083,7 +4083,7 @@ fd_quic_conn_free( fd_quic_t *      quic,
   conn->svc_type        = UINT_MAX;
   conn->svc_next        = state->free_conn_list;
   state->free_conn_list = conn->conn_idx;
-  conn->state           = FD_QUIC_CONN_STATE_INVALID;
+  fd_quic_set_conn_state( conn, FD_QUIC_CONN_STATE_INVALID );
 
   quic->metrics.conn_active_cnt--;
 
@@ -4319,7 +4319,7 @@ fd_quic_conn_create( fd_quic_t *               quic,
   conn->key_phase            = 0;
   conn->key_update           = 0;
 
-  conn->state                = FD_QUIC_CONN_STATE_HANDSHAKE;
+  fd_quic_set_conn_state( conn, FD_QUIC_CONN_STATE_HANDSHAKE );
   conn->reason               = 0;
   conn->app_reason           = 0;
   conn->flags                = 0;
@@ -5445,7 +5445,7 @@ fd_quic_handle_conn_close_frame( fd_quic_conn_t * conn ) {
       return;
 
     default:
-      conn->state = FD_QUIC_CONN_STATE_PEER_CLOSE;
+      fd_quic_set_conn_state( conn, FD_QUIC_CONN_STATE_PEER_CLOSE );
   }
 
   conn->upd_pkt_number = FD_QUIC_PKT_NUM_PENDING;
@@ -5571,7 +5571,7 @@ fd_quic_handle_handshake_done_frame(
   }
 
   /* we shouldn't be receiving this unless handshake is complete */
-  conn->state = FD_QUIC_CONN_STATE_ACTIVE;
+  fd_quic_set_conn_state( conn, FD_QUIC_CONN_STATE_ACTIVE );
 
   /* user callback */
   fd_quic_cb_conn_hs_complete( conn->quic, conn );
@@ -5600,7 +5600,7 @@ fd_quic_conn_close( fd_quic_conn_t * conn,
 
     default:
       {
-        conn->state      = FD_QUIC_CONN_STATE_CLOSE_PENDING;
+        fd_quic_set_conn_state( conn, FD_QUIC_CONN_STATE_CLOSE_PENDING );
         conn->app_reason = app_reason;
       }
   }

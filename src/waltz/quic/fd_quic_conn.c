@@ -115,7 +115,7 @@ fd_quic_conn_new( void *                   mem,
   fd_memset( conn, 0, sizeof(fd_quic_conn_t) );
 
   conn->quic  = quic;
-  conn->state = FD_QUIC_CONN_STATE_INVALID;
+  fd_quic_set_conn_state( conn, FD_QUIC_CONN_STATE_INVALID );
 
   /* Initialize streams */
 

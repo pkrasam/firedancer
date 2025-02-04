@@ -252,6 +252,11 @@ struct fd_quic_conn {
   fd_quic_conn_stream_rx_t srx[1];
 };
 
+inline void
+fd_quic_set_conn_state( fd_quic_conn_t * conn, uint state ) {
+  conn->state = state;
+}
+
 FD_PROTOTYPES_BEGIN
 
 FD_FN_CONST static inline ulong
