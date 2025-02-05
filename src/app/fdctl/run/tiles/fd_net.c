@@ -60,7 +60,6 @@ typedef struct {
 
 typedef struct {
   fd_frag_meta_t * mcache;
-  ulong *          sync;
   ulong            depth;
   ulong            out_idx;
   ulong          * seq;
@@ -703,37 +702,33 @@ unprivileged_init( fd_topo_t *      topo,
     if( strcmp( out_link->name, "net_quic" ) == 0 ) {
       fd_topo_link_t * quic_out = out_link;
       ctx->quic_out->mcache  = quic_out->mcache;
-      ctx->quic_out->sync    = fd_mcache_seq_laddr( ctx->quic_out->mcache );
       ctx->quic_out->depth   = fd_mcache_depth( ctx->quic_out->mcache );
       ctx->quic_out->out_idx = i;
       ctx->quic_out->chunk0  = fd_dcache_compact_chunk0( fd_wksp_containing( quic_out->dcache ), quic_out->dcache );
       ctx->quic_out->mem     = topo->workspaces[ topo->objs[ quic_out->dcache_obj_id ].wksp_id ].wksp;
       ctx->quic_out->wmark   = fd_dcache_compact_wmark ( ctx->quic_out->mem, quic_out->dcache, quic_out->mtu );
-      ctx->quic_out->chunk  = ctx->quic_out->chunk0;
+      ctx->quic_out->chunk   = ctx->quic_out->chunk0;
     } else if( strcmp( out_link->name, "net_shred" ) == 0 ) {
       fd_topo_link_t * shred_out = out_link;
       ctx->shred_out->mcache     = shred_out->mcache;
       ctx->shred_out->out_idx    = i;
-      ctx->shred_out->sync       = fd_mcache_seq_laddr( ctx->shred_out->mcache );
       ctx->shred_out->depth      = fd_mcache_depth( ctx->shred_out->mcache );
       ctx->shred_out->chunk0     = fd_dcache_compact_chunk0( fd_wksp_containing( shred_out->dcache ), shred_out->dcache );
       ctx->shred_out->mem        = topo->workspaces[ topo->objs[ shred_out->dcache_obj_id ].wksp_id ].wksp;
       ctx->shred_out->wmark      = fd_dcache_compact_wmark ( ctx->shred_out->mem, shred_out->dcache, shred_out->mtu );
-      ctx->shred_out->chunk  = ctx->shred_out->chunk0;
+      ctx->shred_out->chunk      = ctx->shred_out->chunk0;
     } else if( strcmp( out_link->name, "net_gossip" ) == 0 ) {
       fd_topo_link_t * gossip_out = out_link;
       ctx->gossip_out->mcache     = gossip_out->mcache;
-      ctx->gossip_out->sync       = fd_mcache_seq_laddr( ctx->gossip_out->mcache );
       ctx->gossip_out->depth      = fd_mcache_depth( ctx->gossip_out->mcache );
       ctx->gossip_out->out_idx    = i;
       ctx->gossip_out->chunk0     = fd_dcache_compact_chunk0( fd_wksp_containing( gossip_out->dcache ), gossip_out->dcache );
       ctx->gossip_out->mem        = topo->workspaces[ topo->objs[ gossip_out->dcache_obj_id ].wksp_id ].wksp;
       ctx->gossip_out->wmark      = fd_dcache_compact_wmark ( ctx->gossip_out->mem, gossip_out->dcache, gossip_out->mtu );
-      ctx->gossip_out->chunk  = ctx->gossip_out->chunk0;
+      ctx->gossip_out->chunk      = ctx->gossip_out->chunk0;
     } else if( strcmp( out_link->name, "net_repair" ) == 0 ) {
       fd_topo_link_t * repair_out = out_link;
       ctx->repair_out->mcache     = repair_out->mcache;
-      ctx->repair_out->sync       = fd_mcache_seq_laddr( ctx->repair_out->mcache );
       ctx->repair_out->depth      = fd_mcache_depth( ctx->repair_out->mcache );
       ctx->repair_out->out_idx    = i;
       ctx->repair_out->chunk0     = fd_dcache_compact_chunk0( fd_wksp_containing( repair_out->dcache ), repair_out->dcache );

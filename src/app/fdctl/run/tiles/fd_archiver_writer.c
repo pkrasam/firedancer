@@ -179,15 +179,16 @@ now( fd_archiver_writer_tile_ctx_t * ctx ) {
 
 static void
 during_housekeeping( fd_archiver_writer_tile_ctx_t * ctx ) {
+  (void)ctx;
   // if( msync( ctx->mmap_addr, ctx->mmap_size, MS_ASYNC ) != 0 ) {
   //   FD_LOG_WARNING(( "msync failed. errno=%i", errno ));
   // }
 
-  FD_LOG_WARNING(( "writer stats: net_shred_in_cnt=%lu quic_verify_in_cnt=%lu net_gossip_in_cnt=%lu net_repair_in_cnt=%lu",
-    ctx->stats.net_shred_in_cnt,
-    ctx->stats.quic_verify_in_cnt,
-    ctx->stats.net_gossip_in_cnt,
-    ctx->stats.net_repair_in_cnt ));
+  // FD_LOG_WARNING(( "writer stats: net_shred_in_cnt=%lu quic_verify_in_cnt=%lu net_gossip_in_cnt=%lu net_repair_in_cnt=%lu",
+  //   ctx->stats.net_shred_in_cnt,
+  //   ctx->stats.quic_verify_in_cnt,
+  //   ctx->stats.net_gossip_in_cnt,
+  //   ctx->stats.net_repair_in_cnt ));
 }
 
 /* Expand the mmap region if the next write would exceed the current size. */
