@@ -217,7 +217,8 @@ main( int     argc,
     service_server( server_quic );
 
     client_stream = fd_quic_conn_new_stream( client_conn );
-    if( !client_stream ) continue;
+    if( client_conn->state != FD_QUIC_CONN_STATE_ACTIVE ) { FD_LOG_NOTICE(( "Early break, inactive connection")); break;}
+    else if( !client_stream ) continue;
     fd_quic_stream_send( client_stream, buf, sz, 1 );
 
     long t = fd_log_wallclock();

@@ -131,13 +131,9 @@ fd_quic_conn_new( void *                   mem,
   }
 
   /* Initialize packet meta pool */
-
-  ulong                pkt_meta_cnt = limits->inflight_pkt_cnt;
-  fd_quic_pkt_meta_t * pkt_meta     = (fd_quic_pkt_meta_t *)( (ulong)mem + layout.pkt_meta_off );
-  fd_memset( pkt_meta, 0, pkt_meta_cnt*sizeof(fd_quic_pkt_meta_t) );
-
-  /* store pointer to storage and size */
-  conn->pkt_meta_mem = pkt_meta;
+  fd_quic_pkt_meta_trackers_init( &conn->pkt_meta_trackers,
+                                  (fd_quic_pkt_meta_t *)((ulong)mem + layout.pkt_meta_off),
+                                  limits->inflight_pkt_cnt );
 
   return conn;
 }

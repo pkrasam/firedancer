@@ -189,17 +189,22 @@ run_quic_client(
     }
 
     /* Reclaim packet metas */
-    if( g_unreliable ) {
-      fd_quic_pkt_meta_pool_t * pool = &client_conn->pkt_meta_pool;
-      fd_quic_pkt_meta_list_t * sent = &pool->sent_pkt_meta[ fd_quic_enc_level_appdata_id ];
-      for(;;) {
-        fd_quic_pkt_meta_t * pkt = sent->head;
-        if( !pkt ) break;
-        fd_quic_reclaim_pkt_meta( client_conn, pkt, fd_quic_enc_level_appdata_id );
-        fd_quic_pkt_meta_remove( sent, NULL, pkt );
-        fd_quic_pkt_meta_deallocate( pool, pkt );
-      }
+    if ( g_unreliable ) {
+          /* treat all packets as ACKed (freeing handshake data, etc.) */
+      fd_quic_pkt_meta_trackers_t * trackers = &client_conn->pkt_meta_trackers;
+      static uint enc_level = fd_quic_enc_level_appdata_id;
+
+      fd_quic_pkt_meta_ds_t * sent  =  &trackers->sent_pkt_metas[enc_level];
+      fd_quic_pkt_meta_t *       pool  =  trackers->pkt_meta_pool_join;
+      FD_QUIC_PKT_META_PROCESS_FROM_BEGIN( fd_quic_reclaim_pkt_meta( client_conn, e, enc_level ),
+                                          fd_quic_pkt_meta_pool_ele_release( pool, prev ),
+                                          0,
+                                          sent,
+                                          pool );
+
+      fd_quic_pkt_meta_clear( trackers, enc_level );
     }
+
   }
 
   do {

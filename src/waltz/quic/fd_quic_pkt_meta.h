@@ -5,7 +5,7 @@
 
 typedef struct fd_quic_pkt_meta      fd_quic_pkt_meta_t;
 typedef struct fd_quic_pkt_meta_list fd_quic_pkt_meta_list_t;
-typedef struct fd_quic_pkt_meta_pool fd_quic_pkt_meta_pool_t;
+typedef struct fd_quic_pkt_meta_trackers fd_quic_pkt_meta_trackers_t;
 
 /* TODO convert to a union with various types of metadata overlaid */
 
@@ -97,70 +97,127 @@ struct fd_quic_pkt_meta {
 
   fd_quic_pkt_meta_var_t var[FD_QUIC_PKT_META_VAR_MAX];
 
-  fd_quic_pkt_meta_t *   next;   /* next in current list */
+  /* treap fields */
+  ulong parent;
+  ulong left;
+  ulong right;
+  ulong prio;
+  ulong next;
+  ulong prev;
 };
 
+#define TREAP_NAME      fd_quic_pkt_meta_treap
+#define TREAP_T         fd_quic_pkt_meta_t
+#define TREAP_QUERY_T   ulong
+#define TREAP_CMP(q,e)  (int)((long)(q) - (long)(e)->pkt_number)
+#define TREAP_LT(e0,e1) ((e0)->pkt_number < (e1)->pkt_number)
+#define TREAP_OPTIMIZE_ITERATION 1
+#include "../../util/tmpl/fd_treap.c"
 
-struct fd_quic_pkt_meta_list {
-  fd_quic_pkt_meta_t * head;
-  fd_quic_pkt_meta_t * tail;
+#define POOL_NAME fd_quic_pkt_meta_pool
+#define POOL_T    fd_quic_pkt_meta_t
+#include "../../util/tmpl/fd_pool.c"
+
+/* alias for transparent ds */
+typedef fd_quic_pkt_meta_treap_t fd_quic_pkt_meta_ds_t;
+typedef fd_quic_pkt_meta_treap_fwd_iter_t fd_quic_pkt_meta_ds_fwd_iter_t;
+
+static inline fd_quic_pkt_meta_ds_fwd_iter_t
+fd_quic_pkt_meta_ds_fwd_iter_init( fd_quic_pkt_meta_ds_t * treap,
+                                  fd_quic_pkt_meta_t *   pool ) {
+  return fd_quic_pkt_meta_treap_fwd_iter_init( treap, pool );
+}
+
+static inline fd_quic_pkt_meta_t *
+fd_quic_pkt_meta_ds_fwd_iter_ele( fd_quic_pkt_meta_ds_fwd_iter_t iter,
+                                  fd_quic_pkt_meta_t *   pool ) {
+  return fd_quic_pkt_meta_treap_fwd_iter_ele( iter, pool );
+}
+
+static inline fd_quic_pkt_meta_ds_fwd_iter_t
+fd_quic_pkt_meta_ds_fwd_iter_next( fd_quic_pkt_meta_ds_fwd_iter_t iter,
+                                   fd_quic_pkt_meta_t *   pool ) {
+  return fd_quic_pkt_meta_treap_fwd_iter_next( iter, pool );
+}
+
+static inline int
+fd_quic_pkt_meta_ds_fwd_iter_done( fd_quic_pkt_meta_ds_fwd_iter_t iter ) {
+  return fd_quic_pkt_meta_treap_fwd_iter_done( iter );
+}
+
+static inline ulong
+fd_quic_pkt_meta_ds_idx_lower_bound( fd_quic_pkt_meta_ds_t * treap,
+                                     ulong                   pkt_number,
+                                     fd_quic_pkt_meta_t *   pool ) {
+  return fd_quic_pkt_meta_treap_idx_lower_bound( treap, pkt_number, pool );
+}
+
+/* end transparent ds */
+
+struct fd_quic_pkt_meta_trackers {
+  fd_quic_pkt_meta_ds_t sent_pkt_metas[4];
+  fd_quic_pkt_meta_t *    pkt_meta_mem;    /* owns the memory for fd_pool of pkt_meta */
+  fd_quic_pkt_meta_t *    pkt_meta_pool_join;
 };
 
+/*
+   process the pkt_meta in the chosen DS
+   cb verbatim executed with current pkt_meta named 'e'
+   prev_cb verbatim executed with previous pkt_meta named 'prev'
+   condition is the condition to stop processing
+*/
+#define FD_QUIC_PKT_META_PROCESS( cb, prev_cb, condition, sent, pool, start ) \
+  do { \
+    fd_quic_pkt_meta_t *       prev  =  NULL; \
+    for( fd_quic_pkt_meta_ds_fwd_iter_t iter = start; \
+                                               !fd_quic_pkt_meta_ds_fwd_iter_done( iter ); \
+                                               iter = fd_quic_pkt_meta_ds_fwd_iter_next( iter, pool ) ) { \
+      fd_quic_pkt_meta_t * e = fd_quic_pkt_meta_ds_fwd_iter_ele( iter, pool ); \
+      if ( condition ) { \
+        break; \
+      } \
+      if ( prev ) { \
+        prev_cb; \
+      } \
+      cb; \
+      prev = e; \
+    } \
+    if( prev ) { \
+      prev_cb; \
+    } \
+  } while( 0 );
 
-struct fd_quic_pkt_meta_pool {
-  fd_quic_pkt_meta_list_t free;    /* free pkt_meta */
+#define FD_QUIC_PKT_META_PROCESS_FROM_BEGIN( cb, prev_cb, condition, sent, pool) \
+  FD_QUIC_PKT_META_PROCESS( cb, prev_cb, condition, sent, pool, fd_quic_pkt_meta_ds_fwd_iter_init( sent, pool ) )
 
-  /* one of each of these for each enc_level */
-  fd_quic_pkt_meta_list_t sent_pkt_meta[4]; /* sent pkt_meta */
-};
+void *
+fd_quic_pkt_meta_trackers_init( fd_quic_pkt_meta_trackers_t * trackers,
+                                fd_quic_pkt_meta_t          * pkt_meta_mem,
+                                ulong                         total_meta_cnt );
 
-
-
-FD_PROTOTYPES_BEGIN
-
-/* initialize pool with existing array of pkt_meta */
 void
-fd_quic_pkt_meta_pool_init( fd_quic_pkt_meta_pool_t * pool,
-                            fd_quic_pkt_meta_t * pkt_meta_array,
-                            ulong                pkt_meta_array_sz );
+fd_quic_pkt_meta_insert( fd_quic_pkt_meta_ds_t * ds,
+                         fd_quic_pkt_meta_t    * pkt_meta,
+                         fd_quic_pkt_meta_t    * pool );
 
-/* pop from front of list */
+/*
+   remove all pkt_meta in the range [pkt_number_lo, pkt_number_hi]
+   rm from treap and return to pool
+*/
+void
+fd_quic_pkt_meta_remove_range( fd_quic_pkt_meta_ds_t * ds,
+                               fd_quic_pkt_meta_t    * pool,
+                               ulong                   pkt_number_lo,
+                               ulong                   pkt_number_hi );
+
 fd_quic_pkt_meta_t *
-fd_quic_pkt_meta_pop_front( fd_quic_pkt_meta_list_t * list );
+fd_quic_pkt_meta_min( fd_quic_pkt_meta_ds_t * ds,
+                      fd_quic_pkt_meta_t    * pool );
 
-
-/* push onto front of list */
 void
-fd_quic_pkt_meta_push_front( fd_quic_pkt_meta_list_t * list,
-                             fd_quic_pkt_meta_t *      pkt_meta );
-
-/* push onto back of list */
-void
-fd_quic_pkt_meta_push_back( fd_quic_pkt_meta_list_t * list,
-                            fd_quic_pkt_meta_t *      pkt_meta );
-
-/* remove from list
-   requires the prior element */
-void
-fd_quic_pkt_meta_remove( fd_quic_pkt_meta_list_t * list,
-                         fd_quic_pkt_meta_t *      pkt_meta_prior,
-                         fd_quic_pkt_meta_t *      pkt_meta );
-
-
-/* allocate a pkt_meta
-   obtains a free pkt_meta from the free list, and returns it
-   returns NULL if none is available */
-fd_quic_pkt_meta_t *
-fd_quic_pkt_meta_allocate( fd_quic_pkt_meta_pool_t * pool );
-
-
-/* free a pkt_meta
-   returns a pkt_meta to the free list, ready to be allocated again */
-void
-fd_quic_pkt_meta_deallocate( fd_quic_pkt_meta_pool_t * pool,
-                             fd_quic_pkt_meta_t *      pkt_meta );
+fd_quic_pkt_meta_clear( fd_quic_pkt_meta_trackers_t * trackers,
+                        uint                          enc_level );
 
 FD_PROTOTYPES_END
 
 #endif // HEADER_fd_src_waltz_quic_fd_quic_pkt_meta_h
-
