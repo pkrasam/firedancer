@@ -1307,18 +1307,19 @@ fd_quic_conn_set_rx_max_data( fd_quic_conn_t * conn, ulong rx_max_data ) {
 /* fd_quic_abandon_enc_level frees all resources associated encryption
    levels less or equal to enc_level. */
 
-void
+ulong
 fd_quic_abandon_enc_level( fd_quic_conn_t * conn,
                            uint             enc_level ) {
-  if( FD_LIKELY( !fd_uint_extract_bit( conn->keys_avail, (int)enc_level ) ) ) return;
+  if( FD_LIKELY( !fd_uint_extract_bit( conn->keys_avail, (int)enc_level ) ) ) return 0UL;
   FD_DEBUG( FD_LOG_DEBUG(( "conn=%p abandoning enc_level=%u", (void *)conn, enc_level )); )
+
+  ulong freed = 0UL;
 
   fd_quic_ack_gen_abandon_enc_level( conn->ack_gen, enc_level );
 
   fd_quic_pkt_meta_tracker_t * tracker = &conn->pkt_meta_tracker;
   for( uint j = 0; j <= enc_level; ++j ) {
     conn->keys_avail = fd_uint_clear_bit( conn->keys_avail, (int)j );
-
     /* treat all packets as ACKed (freeing handshake data, etc.) */
     fd_quic_pkt_meta_ds_t * sent  =  &tracker->sent_pkt_metas[j];
     fd_quic_pkt_meta_t    * pool  =  tracker->pkt_meta_pool_join;
@@ -1328,8 +1329,11 @@ fd_quic_abandon_enc_level( fd_quic_conn_t * conn,
                                          sent,
                                          pool );
 
+    freed += fd_quic_pkt_meta_ds_ele_cnt( sent );
     fd_quic_pkt_meta_ds_clear( tracker, j );
   }
+
+  return freed;
 }
 
 static void
@@ -4505,22 +4509,8 @@ fd_quic_pkt_meta_retry( fd_quic_t *          quic,
     fd_quic_pkt_meta_t * pkt_meta = fd_quic_pkt_meta_min( &tracker->sent_pkt_metas[enc_level], pool );
 
     /* already moved to another enc_level */
-    /* AMAN - instead use abandon_enc_level here? */
     if( enc_level < peer_enc_level ) {
-
-      /* treat the original packet as-if it were ack'ed */
-      fd_quic_reclaim_pkt_meta( conn,
-                                pkt_meta,
-                                enc_level );
-
-      /* remove from list */
-      fd_quic_pkt_meta_remove_range( &tracker->sent_pkt_metas[enc_level],
-                                     pool,
-                                     pkt_meta->pkt_number,
-                                     pkt_meta->pkt_number );
-
-      cnt_freed++;
-
+      cnt_freed += fd_quic_abandon_enc_level( conn, peer_enc_level );
       continue;
     }
 
