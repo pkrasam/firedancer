@@ -402,6 +402,8 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
     fd_block_t * block = fd_blockstore_block_query( ctx->blockstore, slot );
 
     if( block == NULL ) { /* needed later down below for txn iteration */
+      FD_TEST( fd_block_map_verify( ctx->blockstore->block_map ) == FD_MAP_SUCCESS );
+      __asm__("int $3");
       FD_LOG_ERR(( "could not find block - slot: %lu", slot ));
     }
 
