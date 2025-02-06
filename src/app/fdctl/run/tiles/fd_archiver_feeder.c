@@ -108,8 +108,8 @@ unprivileged_init( fd_topo_t *      topo,
       ctx->link_to_header_tile_ids[ i ] = FD_ARCHIVER_TILE_ID_GOSSIP;
     } else if( !strcmp( link->name, "net_repair" ) ) {
       ctx->link_to_header_tile_ids[ i ] = FD_ARCHIVER_TILE_ID_REPAIR;
-    } else if( !strcmp( link->name, "quic_verify" ) ) {
-      ctx->link_to_header_tile_ids[ i ] = FD_ARCHIVER_TILE_ID_VERIFY;
+    } else if( !strcmp( link->name, "net_quic" ) ) {
+      ctx->link_to_header_tile_ids[ i ] = FD_ARCHIVER_TILE_ID_QUIC;
     } else {
       FD_LOG_ERR(( "unsupported input link" ));
     }
@@ -134,13 +134,13 @@ before_frag( fd_archiver_feeder_tile_ctx_t * ctx,
              ulong                           sig ) {
   (void)in_idx;
   (void)sig;
+  (void)seq;
 
-  /* Have exactly one feeder tile for each of the shred, gossip and repair tiles */
-  if ( in_idx == 0 || in_idx == 1 || in_idx == 2 ) {
-    return !(ctx->round_robin_idx == in_idx);
+  if ( ctx->round_robin_idx == in_idx ) {
+    return 0;
   }
 
-  return (seq % ctx->round_robin_cnt) != ctx->round_robin_idx;
+  return 1;
 }
 
 static inline void

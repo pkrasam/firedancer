@@ -21,7 +21,7 @@
 
 struct fd_archiver_writer_stats {
   ulong net_shred_in_cnt;
-  ulong quic_verify_in_cnt;
+  ulong net_quic_in_cnt;
   ulong net_gossip_in_cnt;
   ulong net_repair_in_cnt;
 };
@@ -184,11 +184,11 @@ during_housekeeping( fd_archiver_writer_tile_ctx_t * ctx ) {
   //   FD_LOG_WARNING(( "msync failed. errno=%i", errno ));
   // }
 
-  // FD_LOG_WARNING(( "writer stats: net_shred_in_cnt=%lu quic_verify_in_cnt=%lu net_gossip_in_cnt=%lu net_repair_in_cnt=%lu",
-  //   ctx->stats.net_shred_in_cnt,
-  //   ctx->stats.quic_verify_in_cnt,
-  //   ctx->stats.net_gossip_in_cnt,
-  //   ctx->stats.net_repair_in_cnt ));
+  FD_LOG_WARNING(( "writer stats: net_shred_in_cnt=%lu net_quic_in_cnt=%lu net_gossip_in_cnt=%lu net_repair_in_cnt=%lu",
+    ctx->stats.net_shred_in_cnt,
+    ctx->stats.net_quic_in_cnt,
+    ctx->stats.net_gossip_in_cnt,
+    ctx->stats.net_repair_in_cnt ));
 }
 
 /* Expand the mmap region if the next write would exceed the current size. */
@@ -261,7 +261,7 @@ during_frag( fd_archiver_writer_tile_ctx_t * ctx,
   ctx->stats.net_repair_in_cnt  += header->tile_id == FD_ARCHIVER_TILE_ID_REPAIR;
   ctx->stats.net_gossip_in_cnt  += header->tile_id == FD_ARCHIVER_TILE_ID_GOSSIP;
   ctx->stats.net_shred_in_cnt   += header->tile_id == FD_ARCHIVER_TILE_ID_SHRED;
-  ctx->stats.quic_verify_in_cnt += header->tile_id == FD_ARCHIVER_TILE_ID_VERIFY;
+  ctx->stats.net_quic_in_cnt += header->tile_id == FD_ARCHIVER_TILE_ID_QUIC;
 }
 
 #define STEM_BURST (1UL)

@@ -12,14 +12,14 @@
 #include <linux/if_xdp.h>
 #include "generated/archiver_playback_seccomp.h"
 
-#define NET_SHRED_OUT_IDX   (0UL)
-#define QUIC_VERIFY_OUT_IDX (1UL)
-#define NET_GOSSIP_OUT_IDX  (2UL)
-#define NET_REPAIR_OUT_IDX  (3UL)
+#define NET_SHRED_OUT_IDX  (0UL)
+#define NET_QUIC_OUT_IDX   (1UL)
+#define NET_GOSSIP_OUT_IDX (2UL)
+#define NET_REPAIR_OUT_IDX (3UL)
 
 struct fd_archiver_playback_stats {
   ulong net_shred_out_cnt;
-  ulong quic_verify_out_cnt;
+  ulong net_quic_out_cnt;
   ulong net_gossip_out_cnt;
   ulong net_repair_out_cnt;
 };
@@ -225,9 +225,9 @@ after_credit( fd_archiver_playback_tile_ctx_t *     ctx,
   /* Check if we've reached EOF in the archive. */
   if( FD_UNLIKELY( ctx->archive_off >= ctx->archive_size ||
                    (ctx->archive_size - ctx->archive_off) < FD_ARCHIVER_FRAG_HEADER_FOOTPRINT ) ) {
-    FD_LOG_WARNING(( "playback_stats net_shred_out_cnt=%lu, quic_verify_out_cnt=%lu, net_gossip_out_cnt=%lu, net_repair_out_cnt=%lu",
+    FD_LOG_WARNING(( "playback_stats net_shred_out_cnt=%lu, net_quic_out_cnt=%lu, net_gossip_out_cnt=%lu, net_repair_out_cnt=%lu",
                      ctx->stats.net_shred_out_cnt,
-                     ctx->stats.quic_verify_out_cnt,
+                     ctx->stats.net_quic_out_cnt,
                      ctx->stats.net_gossip_out_cnt,
                      ctx->stats.net_repair_out_cnt ));
     FD_LOG_ERR(( "end of archive file" ));
@@ -254,9 +254,9 @@ after_credit( fd_archiver_playback_tile_ctx_t *     ctx,
     out_link_idx = NET_SHRED_OUT_IDX;
     ctx->stats.net_shred_out_cnt += 1;
     break;
-    case FD_ARCHIVER_TILE_ID_VERIFY:
-    out_link_idx = QUIC_VERIFY_OUT_IDX;
-    ctx->stats.quic_verify_out_cnt += 1;
+    case FD_ARCHIVER_TILE_ID_QUIC:
+    out_link_idx = NET_QUIC_OUT_IDX;
+    ctx->stats.net_quic_out_cnt += 1;
     break;
     case FD_ARCHIVER_TILE_ID_GOSSIP:
     out_link_idx = NET_GOSSIP_OUT_IDX;
@@ -272,6 +272,11 @@ after_credit( fd_archiver_playback_tile_ctx_t *     ctx,
 
   /* Copy fragment from archive file into the output link, ready for publishing */
   if( FD_UNLIKELY( (ctx->archive_size - ctx->archive_off) < ctx->pending_publish_header.sz ) ) {
+    FD_LOG_WARNING(( "playback_stats net_shred_out_cnt=%lu, net_quic_out_cnt=%lu, net_gossip_out_cnt=%lu, net_repair_out_cnt=%lu",
+                     ctx->stats.net_shred_out_cnt,
+                     ctx->stats.net_quic_out_cnt,
+                     ctx->stats.net_gossip_out_cnt,
+                     ctx->stats.net_repair_out_cnt ));
     FD_LOG_ERR(( "archive file too small" ));
   }
   ctx->pending_publish_link_idx = out_link_idx;
