@@ -369,12 +369,6 @@ struct fd_quic {
 
 FD_PROTOTYPES_BEGIN
 
-/* debugging */
-
-ulong
-fd_quic_conn_get_pkt_meta_free_count( fd_quic_conn_t * conn );
-
-
 /* Object lifecycle ***************************************************/
 
 /* fd_quic_{align,footprint} return the required alignment and footprint

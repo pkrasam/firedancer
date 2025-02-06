@@ -3,43 +3,42 @@
 #define FD_QUIC_MAX_INFLIGHT_LOW_ENC 20
 static void *
 fd_quic_pkt_meta_ds_init( fd_quic_pkt_meta_ds_t * sent_pkt_metas,
-                           ulong                  appdata_max_ele ) {
+                          ulong                  appdata_max_ele ) {
 
   for( ulong enc_level=0; enc_level<4; enc_level++ ) {
-    void* mem = fd_quic_pkt_meta_treap_new( sent_pkt_metas+enc_level,
-                                   enc_level == 3 ? appdata_max_ele : FD_QUIC_MAX_INFLIGHT_LOW_ENC );
+    void* mem = fd_quic_pkt_meta_treap_new( &sent_pkt_metas[enc_level],
+                                            enc_level == 3 ? appdata_max_ele : FD_QUIC_MAX_INFLIGHT_LOW_ENC );
     mem = fd_quic_pkt_meta_treap_join( mem );
     if( FD_UNLIKELY( !mem ) ) return NULL;
   }
 
   return sent_pkt_metas;
-
 }
 
 
 void *
-fd_quic_pkt_meta_trackers_init( fd_quic_pkt_meta_trackers_t * trackers,
-                                fd_quic_pkt_meta_t          * pkt_meta_mem,
-                                ulong                         total_meta_cnt ) {
+fd_quic_pkt_meta_tracker_init( fd_quic_pkt_meta_tracker_t *  tracker,
+                               fd_quic_pkt_meta_t         *  pkt_meta_mem,
+                               ulong                         total_meta_cnt ) {
   fd_memset( pkt_meta_mem, 0, total_meta_cnt*sizeof(fd_quic_pkt_meta_t) );
-  trackers->pkt_meta_mem = (void *)fd_ulong_align_up( (ulong)pkt_meta_mem, fd_quic_pkt_meta_pool_align() );
+  tracker->pkt_meta_mem = (void *)fd_ulong_align_up( (ulong)pkt_meta_mem, fd_quic_pkt_meta_pool_align() );
 
-  fd_quic_pkt_meta_t * shpool = fd_quic_pkt_meta_pool_new( trackers->pkt_meta_mem, total_meta_cnt );
-  trackers->pkt_meta_pool_join = fd_quic_pkt_meta_pool_join( shpool );
-  fd_quic_pkt_meta_treap_seed( trackers->pkt_meta_pool_join, total_meta_cnt, (ulong)fd_log_wallclock() );
-  if( FD_UNLIKELY( !trackers->pkt_meta_pool_join ) ) return NULL;
+  fd_quic_pkt_meta_t * shpool  = fd_quic_pkt_meta_pool_new( tracker->pkt_meta_mem, total_meta_cnt );
+  tracker->pkt_meta_pool_join = fd_quic_pkt_meta_pool_join( shpool );
+  fd_quic_pkt_meta_treap_seed( tracker->pkt_meta_pool_join, total_meta_cnt, (ulong)fd_log_wallclock() );
+  if( FD_UNLIKELY( !tracker->pkt_meta_pool_join ) ) return NULL;
 
   /* everything not saved for lower encryption levels goes to appdata */
   ulong appdata_max_ele = total_meta_cnt - 3*FD_QUIC_MAX_INFLIGHT_LOW_ENC;
-  if( FD_UNLIKELY( !fd_quic_pkt_meta_ds_init( trackers->sent_pkt_metas, appdata_max_ele ) ) ) return NULL;
+  if( FD_UNLIKELY( !fd_quic_pkt_meta_ds_init( tracker->sent_pkt_metas, appdata_max_ele ) ) ) return NULL;
   return shpool;
 }
 #undef FD_QUIC_MAX_INFLIGHT_LOW_ENC
 
 void
 fd_quic_pkt_meta_insert( fd_quic_pkt_meta_ds_t * ds,
-                        fd_quic_pkt_meta_t *     pkt_meta,
-                        fd_quic_pkt_meta_t *     pool ) {
+                         fd_quic_pkt_meta_t    * pkt_meta,
+                         fd_quic_pkt_meta_t    * pool ) {
   fd_quic_pkt_meta_treap_ele_insert( ds, pkt_meta, pool );
 }
 
@@ -50,7 +49,7 @@ fd_quic_pkt_meta_remove_range( fd_quic_pkt_meta_ds_t * ds,
                                ulong                   pkt_number_lo,
                                ulong                   pkt_number_hi ) {
 
-  fd_quic_pkt_meta_treap_fwd_iter_t l_iter = fd_quic_pkt_meta_treap_idx_lower_bound( ds, pkt_number_lo, pool );
+  fd_quic_pkt_meta_treap_fwd_iter_t l_iter = fd_quic_pkt_meta_treap_idx_ge( ds, pkt_number_lo, pool );
 
   FD_QUIC_PKT_META_PROCESS(
     ,
@@ -73,8 +72,8 @@ fd_quic_pkt_meta_min( fd_quic_pkt_meta_ds_t * ds,
 }
 
 void
-fd_quic_pkt_meta_clear( fd_quic_pkt_meta_trackers_t * trackers,
-                        uint                          enc_level ) {
-  ulong ele_max = fd_quic_pkt_meta_treap_ele_max( trackers->sent_pkt_metas+enc_level );
-  fd_quic_pkt_meta_treap_new( trackers->sent_pkt_metas+enc_level, ele_max );
+fd_quic_pkt_meta_ds_clear( fd_quic_pkt_meta_tracker_t * tracker,
+                        uint                         enc_level ) {
+  ulong ele_max = fd_quic_pkt_meta_treap_ele_max( &tracker->sent_pkt_metas[enc_level] );
+  fd_quic_pkt_meta_treap_new( &tracker->sent_pkt_metas[enc_level], ele_max );
 }

@@ -3,9 +3,9 @@
 
 #include "fd_quic_common.h"
 
-typedef struct fd_quic_pkt_meta      fd_quic_pkt_meta_t;
-typedef struct fd_quic_pkt_meta_list fd_quic_pkt_meta_list_t;
-typedef struct fd_quic_pkt_meta_trackers fd_quic_pkt_meta_trackers_t;
+typedef struct fd_quic_pkt_meta         fd_quic_pkt_meta_t;
+typedef struct fd_quic_pkt_meta_list    fd_quic_pkt_meta_list_t;
+typedef struct fd_quic_pkt_meta_tracker fd_quic_pkt_meta_tracker_t;
 
 /* TODO convert to a union with various types of metadata overlaid */
 
@@ -106,95 +106,163 @@ struct fd_quic_pkt_meta {
   ulong prev;
 };
 
-#define TREAP_NAME      fd_quic_pkt_meta_treap
-#define TREAP_T         fd_quic_pkt_meta_t
-#define TREAP_QUERY_T   ulong
-#define TREAP_CMP(q,e)  (int)((long)(q) - (long)(e)->pkt_number)
-#define TREAP_LT(e0,e1) ((e0)->pkt_number < (e1)->pkt_number)
-#define TREAP_OPTIMIZE_ITERATION 1
-#include "../../util/tmpl/fd_treap.c"
-
-#define POOL_NAME fd_quic_pkt_meta_pool
-#define POOL_T    fd_quic_pkt_meta_t
+#define     POOL_NAME                 fd_quic_pkt_meta_pool
+#define     POOL_T                    fd_quic_pkt_meta_t
 #include "../../util/tmpl/fd_pool.c"
 
-/* alias for transparent ds */
-typedef fd_quic_pkt_meta_treap_t fd_quic_pkt_meta_ds_t;
-typedef fd_quic_pkt_meta_treap_fwd_iter_t fd_quic_pkt_meta_ds_fwd_iter_t;
+#define     TREAP_NAME                fd_quic_pkt_meta_treap
+#define     TREAP_T                   fd_quic_pkt_meta_t
+#define     TREAP_QUERY_T             ulong
+#define     TREAP_CMP(q,e)            (int)((long)(q) - (long)(e)->pkt_number)
+#define     TREAP_LT(e0,e1)           ((e0)->pkt_number < (e1)->pkt_number)
+#define     TREAP_OPTIMIZE_ITERATION  1
+#include "../../util/tmpl/fd_treap.c"
 
+/* begin aliasing to abstract data structure */
+typedef fd_quic_pkt_meta_treap_t            fd_quic_pkt_meta_ds_t;
+typedef fd_quic_pkt_meta_treap_fwd_iter_t   fd_quic_pkt_meta_ds_fwd_iter_t;
+
+/* fd_quic_pkt_meta_ds_fwd_iter_init is equivalent of ds.begin()
+   @arguments:
+   - ds: pointer to the ds
+   - pool: pointer to the backing pool
+   @returns:
+   - beginning iterator */
 static inline fd_quic_pkt_meta_ds_fwd_iter_t
-fd_quic_pkt_meta_ds_fwd_iter_init( fd_quic_pkt_meta_ds_t * treap,
-                                  fd_quic_pkt_meta_t *   pool ) {
-  return fd_quic_pkt_meta_treap_fwd_iter_init( treap, pool );
+fd_quic_pkt_meta_ds_fwd_iter_init( fd_quic_pkt_meta_ds_t * ds,
+                                   fd_quic_pkt_meta_t    * pool ) {
+  return fd_quic_pkt_meta_treap_fwd_iter_init( ds, pool );
 }
 
+/* fd_quic_pkt_meta_ds_fwd_iter_ele returns pkt_meta* from iter
+   @arguments:
+   - iter: iterator
+   - pool: pointer to the backing pool
+   @returns:
+   - pointer to pkt_meta */
 static inline fd_quic_pkt_meta_t *
-fd_quic_pkt_meta_ds_fwd_iter_ele( fd_quic_pkt_meta_ds_fwd_iter_t iter,
-                                  fd_quic_pkt_meta_t *   pool ) {
+fd_quic_pkt_meta_ds_fwd_iter_ele( fd_quic_pkt_meta_ds_fwd_iter_t   iter,
+                                  fd_quic_pkt_meta_t             * pool ) {
   return fd_quic_pkt_meta_treap_fwd_iter_ele( iter, pool );
 }
 
+/* fd_quic_pkt_meta_ds_fwd_iter_next is equivalent of iter++
+   @arguments:
+   - iter: iterator
+   - pool: pointer to the backing pool
+   @returns:
+   - next iterator */
 static inline fd_quic_pkt_meta_ds_fwd_iter_t
-fd_quic_pkt_meta_ds_fwd_iter_next( fd_quic_pkt_meta_ds_fwd_iter_t iter,
-                                   fd_quic_pkt_meta_t *   pool ) {
+fd_quic_pkt_meta_ds_fwd_iter_next( fd_quic_pkt_meta_ds_fwd_iter_t   iter,
+                                   fd_quic_pkt_meta_t             * pool ) {
   return fd_quic_pkt_meta_treap_fwd_iter_next( iter, pool );
 }
 
+/* fd_quic_pkt_meta_ds_fwd_iter_done returns boolean
+  @arguments
+  - iter: iterator
+  @returns
+  - non-zero if iterator marks end, 0 otherwise */
 static inline int
 fd_quic_pkt_meta_ds_fwd_iter_done( fd_quic_pkt_meta_ds_fwd_iter_t iter ) {
   return fd_quic_pkt_meta_treap_fwd_iter_done( iter );
 }
 
-static inline ulong
-fd_quic_pkt_meta_ds_idx_lower_bound( fd_quic_pkt_meta_ds_t * treap,
-                                     ulong                   pkt_number,
-                                     fd_quic_pkt_meta_t *   pool ) {
-  return fd_quic_pkt_meta_treap_idx_lower_bound( treap, pkt_number, pool );
+/* fd_quic_pkt_meta_ds_idx_ge returns iterator pointing to first pkt_meta
+  whose packet number is >= pkt_number
+  @arguments
+  - ds: pointer to the ds
+  - pkt_number: pkt_number to search for
+  - pool: pointer to the backing pool
+  @returns
+  - iterator to first pkt_meta with pkt number >= pkt_number */
+static inline fd_quic_pkt_meta_ds_fwd_iter_t
+fd_quic_pkt_meta_ds_idx_ge( fd_quic_pkt_meta_ds_t * ds,
+                            ulong                   pkt_number,
+                            fd_quic_pkt_meta_t    * pool ) {
+  return fd_quic_pkt_meta_treap_idx_ge( ds, pkt_number, pool );
 }
 
-/* end transparent ds */
+/* fd_quic_pkt_meta_ds_ele_cnt returns count of elements in ds */
+static inline ulong
+fd_quic_pkt_meta_ds_ele_cnt( fd_quic_pkt_meta_ds_t * ds ) {
+  return fd_quic_pkt_meta_treap_ele_cnt( ds );
+}
 
-struct fd_quic_pkt_meta_trackers {
-  fd_quic_pkt_meta_ds_t sent_pkt_metas[4];
-  fd_quic_pkt_meta_t *    pkt_meta_mem;    /* owns the memory for fd_pool of pkt_meta */
-  fd_quic_pkt_meta_t *    pkt_meta_pool_join;
+/* end aliasing to abstract data structure */
+
+struct fd_quic_pkt_meta_tracker {
+  fd_quic_pkt_meta_ds_t       sent_pkt_metas[4];
+  fd_quic_pkt_meta_t     *    pkt_meta_mem;    /* owns the memory for pool */
+  fd_quic_pkt_meta_t     *    pkt_meta_pool_join;
 };
 
 /*
-   process the pkt_meta in the chosen DS
-   cb verbatim executed with current pkt_meta named 'e'
-   prev_cb verbatim executed with previous pkt_meta named 'prev'
-   condition is the condition to stop processing
-*/
-#define FD_QUIC_PKT_META_PROCESS( cb, prev_cb, condition, sent, pool, start ) \
+   FD_QUIC_PKT_META_PROCESS processes the pkt_meta
+   @arguments:
+   - cb: executed verbatim, current pkt_meta named 'e'
+   - prev_cb: executed verbatim, previous pkt_meta named 'prev'
+   - condition: condition to stop processing. Evaluated at top of loop, with 'e' and 'prev' set
+   - sent: pointer to the ds
+   - pool: pointer to the backing pool
+   - start: iterator to start processing from */
+#define FD_QUIC_PKT_META_PROCESS( cb, \
+                                  prev_cb, \
+                                  condition, \
+                                  sent, \
+                                  pool, \
+                                  start ) \
   do { \
-    fd_quic_pkt_meta_t *       prev  =  NULL; \
+    fd_quic_pkt_meta_t * prev  =  NULL; \
     for( fd_quic_pkt_meta_ds_fwd_iter_t iter = start; \
                                                !fd_quic_pkt_meta_ds_fwd_iter_done( iter ); \
                                                iter = fd_quic_pkt_meta_ds_fwd_iter_next( iter, pool ) ) { \
       fd_quic_pkt_meta_t * e = fd_quic_pkt_meta_ds_fwd_iter_ele( iter, pool ); \
-      if ( condition ) { \
+      if( condition ) { \
         break; \
       } \
-      if ( prev ) { \
+      if( FD_LIKELY( prev ) ) { \
         prev_cb; \
       } \
       cb; \
       prev = e; \
     } \
-    if( prev ) { \
+    if( FD_LIKELY( prev ) ) { \
       prev_cb; \
     } \
   } while( 0 );
 
-#define FD_QUIC_PKT_META_PROCESS_FROM_BEGIN( cb, prev_cb, condition, sent, pool) \
-  FD_QUIC_PKT_META_PROCESS( cb, prev_cb, condition, sent, pool, fd_quic_pkt_meta_ds_fwd_iter_init( sent, pool ) )
+/* FD_QUIC_PKT_META_PROCESS_FROM_BEGIN is like FD_QUIC_PKT_META_PROCESS,
+   with default param 'start' set to the beginning ds iterator */
+#define FD_QUIC_PKT_META_PROCESS_FROM_BEGIN( cb, \
+                                             prev_cb, \
+                                             condition, \
+                                             sent, \
+                                             pool ) \
+  FD_QUIC_PKT_META_PROCESS( cb, prev_cb, condition, sent, pool, fd_quic_pkt_meta_ds_fwd_iter_init( sent, pool ) );
 
+
+/* fd_quic_pkt_meta_tracker_init initializes the metadata tracker
+  In particular, it turns pkt_meta_mem into a pool of size total_meta_cnt
+  For each encoding level, it initializes the pkt_meta data structure
+  @arguments:
+  - tracker: pointer to the pkt_meta tracker
+  - pkt_meta_mem: pointer to the memory for the pool
+  - total_meta_cnt: total number of pkt_meta entries in the pool
+    (shared across all encoding levels)
+  @returns:
+  - pointer to the pool if successful, NULL otherwise */
 void *
-fd_quic_pkt_meta_trackers_init( fd_quic_pkt_meta_trackers_t * trackers,
-                                fd_quic_pkt_meta_t          * pkt_meta_mem,
-                                ulong                         total_meta_cnt );
+fd_quic_pkt_meta_tracker_init( fd_quic_pkt_meta_tracker_t *  tracker,
+                               fd_quic_pkt_meta_t         *  pkt_meta_mem,
+                               ulong                         total_meta_cnt );
 
+/* fd_quic_pkt_meta_insert inserts a pkt_meta into the ds
+  @arguments:
+  - ds: pointer to the ds
+  - pkt_meta: pointer to the pkt_meta to insert. This pkt_meta
+      should have been acquired from the pool
+  - pool: pointer to the backing pool */
 void
 fd_quic_pkt_meta_insert( fd_quic_pkt_meta_ds_t * ds,
                          fd_quic_pkt_meta_t    * pkt_meta,
@@ -204,19 +272,37 @@ fd_quic_pkt_meta_insert( fd_quic_pkt_meta_ds_t * ds,
    remove all pkt_meta in the range [pkt_number_lo, pkt_number_hi]
    rm from treap and return to pool
 */
+/* fd_quic_pkt_meta_remove_range removes all pkt_meta in the range
+  [pkt_number_lo, pkt_number_hi] from the ds and returns them to the pool.
+  Any part of the range that's missing simply gets skipped
+  @arguments:
+  - ds: pointer to the ds
+  - pool: pointer to the backing pool
+  - pkt_number_lo: lower bound of the range
+  - pkt_number_hi: upper bound of the range */
 void
 fd_quic_pkt_meta_remove_range( fd_quic_pkt_meta_ds_t * ds,
                                fd_quic_pkt_meta_t    * pool,
                                ulong                   pkt_number_lo,
                                ulong                   pkt_number_hi );
 
+/* fd_quic_pkt_meta_min returns pointer to pkt_meta with smallest pkt_number in the ds
+  @arguments:
+  - ds: pointer to the ds
+  - pool: pointer to the backing pool
+  @returns:
+  - pointer to pkt_meta with smallest pkt_number in the ds */
 fd_quic_pkt_meta_t *
 fd_quic_pkt_meta_min( fd_quic_pkt_meta_ds_t * ds,
                       fd_quic_pkt_meta_t    * pool );
 
+/* fd_quic_pkt_meta_ds_clear clears all pkt_meta tracking for a given encoding level
+  @arguments:
+  - tracker: pointer to the pkt_meta tracker
+  - enc_level: encoding level to clear */
 void
-fd_quic_pkt_meta_clear( fd_quic_pkt_meta_trackers_t * trackers,
-                        uint                          enc_level );
+fd_quic_pkt_meta_ds_clear( fd_quic_pkt_meta_tracker_t * tracker,
+                           uint                         enc_level );
 
 FD_PROTOTYPES_END
 

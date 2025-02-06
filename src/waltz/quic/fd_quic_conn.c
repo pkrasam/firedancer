@@ -131,7 +131,7 @@ fd_quic_conn_new( void *                   mem,
   }
 
   /* Initialize packet meta pool */
-  fd_quic_pkt_meta_trackers_init( &conn->pkt_meta_trackers,
+  fd_quic_pkt_meta_tracker_init( &conn->pkt_meta_tracker,
                                   (fd_quic_pkt_meta_t *)((ulong)mem + layout.pkt_meta_off),
                                   limits->inflight_pkt_cnt );
 

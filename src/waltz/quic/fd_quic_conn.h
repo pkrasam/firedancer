@@ -206,7 +206,7 @@ struct fd_quic_conn {
   ulong             unacked_sz;  /* Number of received stream frame payload bytes pending ACK */
                                  /* Resets to zero when conn is rescheduled or ACKs are sent */
 
-  fd_quic_pkt_meta_trackers_t pkt_meta_trackers;
+  fd_quic_pkt_meta_tracker_t pkt_meta_tracker;
 
   /* flow control */
   ulong                tx_max_data;        /* the limit on the number of bytes we are allowed
@@ -251,7 +251,8 @@ struct fd_quic_conn {
 };
 
 inline void
-fd_quic_set_conn_state( fd_quic_conn_t * conn, uint state ) {
+fd_quic_set_conn_state( fd_quic_conn_t * conn,
+                        uint             state ) {
   conn->state = state;
 }
 
