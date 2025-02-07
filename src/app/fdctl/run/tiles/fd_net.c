@@ -200,6 +200,11 @@ net_rx_aio_send( void *                    _ctx,
 
     FD_DTRACE_PROBE_4( net_tile_pkt_rx, ip_srcaddr, udp_srcport, udp_dstport, batch[i].buf_sz );
 
+    /* Don't publish if no credits available */
+    if( *ctx->cr_avail == 0 ) {
+      continue;
+    }
+
     ushort proto;
     fd_net_out_ctx_t * out;
     if(      FD_UNLIKELY( udp_dstport==ctx->shred_listen_port ) ) {
