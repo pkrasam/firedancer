@@ -401,23 +401,38 @@ fd_forks_update( fd_forks_t *      forks,
 
       /* Check if it has crossed finalized threshold. */
 
-      fd_blockstore_start_write( blockstore );
-      fd_block_meta_t * block_map_entry = fd_blockstore_block_map_query( blockstore, root );
-      int finalized = fd_uchar_extract_bit( block_map_entry->flags, FD_BLOCK_FLAG_FINALIZED );
+      /* Doing a blocking read because of nested if/loops, and it's
+         easier to reason about than if we had to loop for non-blocking
+         writes. Every prepare is followed by publish/cancel. */
+      fd_block_map_query_t query[1] = { 0 };
+      fd_block_map_prepare( blockstore->block_map, &root, NULL, query, FD_MAP_FLAG_BLOCKING );
+      fd_block_meta_t * block_map_entry = fd_block_map_query_ele( query );
+      int               finalized       = fd_uchar_extract_bit( block_map_entry->flags, FD_BLOCK_FLAG_FINALIZED );
       if( FD_UNLIKELY( !finalized ) ) {
         double pct = (double)node->rooted_stake / (double)epoch->total_stake;
         if( FD_UNLIKELY( pct > FD_FINALIZED_PCT ) ) {
           ulong smr       = block_map_entry->slot;
+
+          fd_blockstore_start_write( blockstore );
           blockstore->shmem->smr = fd_ulong_max( blockstore->shmem->smr, smr );
-          FD_LOG_DEBUG(( "finalized %lu", block_map_entry->slot ));
+          fd_blockstore_end_write( blockstore );
+
+          FD_LOG_DEBUG(( "finalized %lu", smr ));
           fd_block_meta_t * ancestor = block_map_entry;
           while( ancestor ) {
             ancestor->flags = fd_uchar_set_bit( ancestor->flags, FD_BLOCK_FLAG_FINALIZED );
-            ancestor        = fd_blockstore_block_map_query( blockstore, ancestor->parent_slot );
+            ulong ancestor_slot = ancestor->parent_slot;
+            fd_block_map_publish( query );
+
+            fd_block_map_prepare( blockstore->block_map, &ancestor_slot, NULL, query, FD_MAP_FLAG_BLOCKING );
+            ancestor = fd_block_map_query_ele( query );
+            if( FD_UNLIKELY( !ancestor || ancestor->slot != ancestor_slot) ) {
+              break;
+            }
           }
         }
       }
-      fd_blockstore_end_write( blockstore );
+      fd_block_map_cancel( query );
     }
   }
 }

@@ -1260,10 +1260,12 @@ prepare_new_block_execution( fd_replay_tile_ctx_t * ctx,
     is_new_epoch_in_new_block = (int)fd_runtime_is_epoch_boundary( epoch_bank, fork->slot_ctx.slot_bank.slot, fork->slot_ctx.slot_bank.prev_slot );
   }
 
-  fd_blockstore_start_write( ctx->blockstore );
-  fd_block_meta_t * curr_block_map_entry = fd_blockstore_block_map_query( ctx->blockstore, ctx->curr_slot );
+  fd_block_map_query_t query[1] = { 0 };
+  int err = fd_block_map_prepare( ctx->blockstore->block_map, &curr_slot, NULL, query, FD_MAP_FLAG_BLOCKING );
+  if( FD_UNLIKELY( err == FD_MAP_ERR_FULL )) FD_LOG_ERR(("Block map corruption."));
+  fd_block_meta_t * curr_block_map_entry = fd_block_map_query_ele( query );
   curr_block_map_entry->in_poh_hash = fork->slot_ctx.slot_bank.poh;
-  fd_blockstore_end_write( ctx->blockstore );
+  fd_block_map_publish( query );
 
   fork->slot_ctx.slot_bank.prev_slot   = fork->slot_ctx.slot_bank.slot;
   fork->slot_ctx.slot_bank.slot        = curr_slot;
@@ -1484,17 +1486,17 @@ process_and_exec_mbatch( fd_replay_tile_ctx_t * ctx,
     if( res != FD_RUNTIME_EXECUTE_SUCCESS ) {
       FD_LOG_WARNING(( "microblk process: block invalid - slot: %lu", ctx->curr_slot ));
 
-      fd_blockstore_start_write( ctx->blockstore );
+      fd_block_map_query_t query[1] = { 0 };
+      fd_block_map_prepare( ctx->blockstore->block_map, &ctx->curr_slot, NULL, query, FD_MAP_FLAG_BLOCKING );
+      fd_block_meta_t * block_map_entry = fd_block_map_query_ele( query );
 
-      fd_block_meta_t * block_map_entry = fd_blockstore_block_map_query( ctx->blockstore, ctx->curr_slot );
-      if( FD_LIKELY( block_map_entry ) ) {
+      if( FD_LIKELY( block_map_entry && block_map_entry->slot == ctx->curr_slot ) ) { // a non block_map_entry would have slot 0
         block_map_entry->flags = fd_uchar_set_bit( block_map_entry->flags, FD_BLOCK_FLAG_DEADBLOCK );
         FD_COMPILER_MFENCE();
         block_map_entry->flags = fd_uchar_clear_bit( block_map_entry->flags, FD_BLOCK_FLAG_REPLAYING );
         memcpy( &block_map_entry->bank_hash, &fork->slot_ctx.slot_bank.banks_hash, sizeof(fd_hash_t) );
       }
-
-      fd_blockstore_end_write( ctx->blockstore );
+      fd_block_map_publish( query );
       return -1;
     } else {
       /* Push notifications for account updates */
