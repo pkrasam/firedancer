@@ -413,7 +413,7 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
     }
 
     out_buf += sizeof(ulong);
-    err = fd_blockstore_block_hash_query( ctx->blockstore, slot, out_buf, sizeof(fd_hash_t) );
+    err = fd_blockstore_block_hash_copy( ctx->blockstore, slot, out_buf, sizeof(fd_hash_t) );
     if( FD_UNLIKELY( err ) ) FD_LOG_ERR(( "could not find slot meta" ));
     fd_hash_t * block_hash = fd_type_pun( out_buf );
 

@@ -3876,7 +3876,7 @@ fd_runtime_block_eval_tpool( fd_exec_slot_ctx_t * slot_ctx,
     /* Use the blockhash as the funk xid */
     fd_funk_txn_xid_t xid;
 
-    int err = fd_blockstore_block_hash_query( slot_ctx->blockstore, slot, xid.uc, sizeof(fd_funk_txn_xid_t) );
+    int err = fd_blockstore_block_hash_copy( slot_ctx->blockstore, slot, xid.uc, sizeof(fd_funk_txn_xid_t) );
     if( FD_UNLIKELY( err ) ) {
       ret = FD_RUNTIME_EXECUTE_GENERIC_ERR;
       FD_LOG_WARNING(( "missing blockhash for %lu", slot ));

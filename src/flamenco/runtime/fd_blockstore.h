@@ -684,21 +684,21 @@ fd_buf_shred_query_copy_data( fd_blockstore_t * blockstore,
 fd_block_t *
 fd_blockstore_block_query( fd_blockstore_t * blockstore, ulong slot );
 
-/* fd_blockstore_block_hash_query queries blockstore for the block hash
+/* fd_blockstore_block_hash_copy queries blockstore for the block hash
    at slot. This is the final poh hash for a slot.
 
    This is non-blocking, and does the memcpy of hash so the caller doesn't
    need to manage the block map entry */
 int
-fd_blockstore_block_hash_query( fd_blockstore_t * blockstore, ulong slot, uchar * buf_out, ulong sz );
+fd_blockstore_block_hash_copy( fd_blockstore_t * blockstore, ulong slot, uchar * buf_out, ulong sz );
 
-/* fd_blockstore_bank_hash_query query blockstore for the bank hash for
+/* fd_blockstore_bank_hash_copy query blockstore for the bank hash for
    a given slot.
 
    This is non-blocking, and does the memcpy of hash so the caller doesn't
    need to manage the block map entry */
 int
-fd_blockstore_bank_hash_query( fd_blockstore_t * blockstore, ulong slot, fd_hash_t * out );
+fd_blockstore_bank_hash_copy( fd_blockstore_t * blockstore, ulong slot, fd_hash_t * out );
 
 /* fd_blockstore_block_map_query queries the blockstore for the block
    map entry at slot.  Returns a pointer to the slot meta or NULL if not

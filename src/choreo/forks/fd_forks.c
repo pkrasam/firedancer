@@ -201,7 +201,7 @@ slot_ctx_restore( ulong                 slot,
     FD_LOG_ERR( ( "missing block at slot we're trying to restore" ) );
 
   fd_funk_txn_xid_t xid;
-  int err = fd_blockstore_block_hash_query( blockstore, slot, xid.uc, sizeof( fd_funk_txn_xid_t ) );
+  int err = fd_blockstore_block_hash_copy( blockstore, slot, xid.uc, sizeof( fd_funk_txn_xid_t ) );
   if ( FD_UNLIKELY( err ) ) FD_LOG_ERR( ( "failed to read block hash" ) );
   xid.ul[0]             = slot;
   fd_funk_rec_key_t id  = fd_runtime_slot_bank_key();

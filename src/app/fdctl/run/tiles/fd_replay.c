@@ -582,7 +582,7 @@ checkpt( fd_replay_tile_ctx_t * ctx ) {
 static void
 funk_cancel( fd_replay_tile_ctx_t * ctx, ulong mismatch_slot ) {
   fd_funk_txn_xid_t xid;
-  fd_blockstore_block_hash_query( ctx->blockstore, mismatch_slot, xid.uc, sizeof( fd_funk_txn_xid_t ) );
+  fd_blockstore_block_hash_copy( ctx->blockstore, mismatch_slot, xid.uc, sizeof( fd_funk_txn_xid_t ) );
 
   fd_funk_start_write( ctx->funk );
   xid.ul[0]                    = mismatch_slot;
@@ -1176,13 +1176,13 @@ send_tower_sync( fd_replay_tile_ctx_t * ctx ) {
   ulong vote_slot = fd_tower_votes_peek_tail_const( ctx->tower )->slot;
   fd_hash_t vote_bank_hash;
   fd_hash_t vote_block_hash;
-  int err = fd_blockstore_bank_hash_query( ctx->blockstore, vote_slot, &vote_bank_hash );
+  int err = fd_blockstore_bank_hash_copy( ctx->blockstore, vote_slot, &vote_bank_hash );
   if( err ) {
     FD_LOG_WARNING(("no vote bank hash found"));
     return;
   }
 
-  err = fd_blockstore_block_hash_query( ctx->blockstore, vote_slot, vote_block_hash.uc, sizeof(fd_hash_t) );
+  err = fd_blockstore_block_hash_copy( ctx->blockstore, vote_slot, vote_block_hash.uc, sizeof(fd_hash_t) );
   if( err ) {
     FD_LOG_WARNING(("no vote block hash found"));
     fd_blockstore_end_read( ctx->blockstore );
@@ -2521,7 +2521,7 @@ during_housekeeping( void * _ctx ) {
   FD_LOG_NOTICE(( "wmk %lu => %lu", fd_fseq_query( ctx->wmk ), wmk ));
 
   fd_funk_txn_xid_t xid;
-  fd_blockstore_block_hash_query( ctx->blockstore, wmk, xid.uc, sizeof( fd_funk_txn_xid_t ) );
+  fd_blockstore_block_hash_copy( ctx->blockstore, wmk, xid.uc, sizeof( fd_funk_txn_xid_t ) );
   /* don't think this originally did err checking, but maybe we want it */
   xid.ul[0] = wmk;
 

@@ -1461,7 +1461,7 @@ fd_blockstore_block_query( fd_blockstore_t * blockstore, ulong slot ) {
 }
 
 int
-fd_blockstore_block_hash_query( fd_blockstore_t * blockstore, ulong slot, uchar * buf_out, ulong buf_sz ) {
+fd_blockstore_block_hash_copy( fd_blockstore_t * blockstore, ulong slot, uchar * buf_out, ulong buf_sz ) {
   /* TODO: gold standard for now */
   int err = FD_MAP_ERR_AGAIN;
   while( err == FD_MAP_ERR_AGAIN ){
@@ -1479,7 +1479,7 @@ fd_blockstore_block_hash_query( fd_blockstore_t * blockstore, ulong slot, uchar 
 }
 
 int
-fd_blockstore_bank_hash_query( fd_blockstore_t * blockstore, ulong slot, fd_hash_t * hash_out ) {
+fd_blockstore_bank_hash_copy( fd_blockstore_t * blockstore, ulong slot, fd_hash_t * hash_out ) {
   int err = FD_MAP_ERR_AGAIN;
   while( err == FD_MAP_ERR_AGAIN ){
     fd_block_map_query_t query[1] = { 0 };
