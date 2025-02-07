@@ -663,6 +663,7 @@ fd_blockstore_slot_remove( fd_blockstore_t * blockstore, ulong slot ) {
 
   err = fd_block_map_remove( blockstore->block_map, &slot, query, FD_MAP_FLAG_BLOCKING );
   if( FD_UNLIKELY( err ) ) return; /* remove unsuccessful. TODO: how should fail? */
+  FD_TEST( !fd_blockstore_block_meta_test( blockstore, slot ) );
 
   /* Unlink slot from its parent only if it is not published. */
   // TODO: no blocking no blocking!!!!
@@ -1073,6 +1074,7 @@ deshred( fd_blockstore_t * blockstore, ulong slot ) {
       err = fd_buf_shred_map_query_try( blockstore->shred_map, &key, NULL, query );
       if( FD_UNLIKELY( err == FD_MAP_ERR_KEY ) ) FD_LOG_ERR(( "[%s] map missing shred %lu %u while deshredding", __func__, slot, idx ));
       if( FD_UNLIKELY( err == FD_MAP_ERR_CORRUPT ) ) FD_LOG_ERR(( "[%s] map corrupt. shred %lu %u", __func__, slot, idx ));
+      if( FD_UNLIKELY( err == FD_MAP_ERR_AGAIN ) ) continue;
       fd_buf_shred_t const * shred = fd_buf_shred_map_query_ele_const( query );
       shred_hdr = shred->hdr;
       err = fd_buf_shred_map_query_test( query );
@@ -1120,10 +1122,12 @@ deshred( fd_blockstore_t * blockstore, ulong slot ) {
     ulong          payload_sz = 0UL;
     uchar          flags      = 0;
     int err = FD_MAP_ERR_AGAIN;
-    int loop_cnt = 0;
     while( err == FD_MAP_ERR_AGAIN ) {
       fd_buf_shred_map_query_t query[1] = { 0 };;
       err = fd_buf_shred_map_query_try( blockstore->shred_map, &key, NULL, query );
+      if( FD_UNLIKELY( err == FD_MAP_ERR_AGAIN ) ) continue;
+      if( FD_UNLIKELY( err == FD_MAP_ERR_KEY ) ) FD_LOG_ERR(( "[%s] map missing shred %lu %u while deshredding", __func__, slot, idx ));
+      if( FD_UNLIKELY( err == FD_MAP_ERR_CORRUPT ) ) FD_LOG_ERR(( "[%s] map corrupt. shred %lu %u", __func__, slot, idx ));
       fd_shred_t const * shred = &fd_buf_shred_map_query_ele_const( query )->hdr;
       memcpy( data_laddr + off, fd_shred_data_payload( shred ), fd_shred_payload_sz( shred ) );
 
@@ -1136,10 +1140,6 @@ deshred( fd_blockstore_t * blockstore, ulong slot ) {
       flags      = shred->data.flags;
 
       err = fd_buf_shred_map_query_test( query );
-      loop_cnt++;
-      if( FD_UNLIKELY( loop_cnt > 1 ) ) FD_LOG_WARNING(( "[%s] loop_cnt large as heck: %d", __func__, loop_cnt ));
-      if( FD_UNLIKELY( err == FD_MAP_ERR_KEY ) ) FD_LOG_ERR(( "[%s] map missing shred %lu %u while deshredding", __func__, slot, idx ));
-      if( FD_UNLIKELY( err == FD_MAP_ERR_CORRUPT ) ) FD_LOG_ERR(( "[%s] map corrupt. shred %lu %u", __func__, slot, idx ));
     }
     FD_TEST( !err );
     off += payload_sz;
@@ -1179,7 +1179,7 @@ deshred( fd_blockstore_t * blockstore, ulong slot ) {
 
 void
 fd_blockstore_shred_insert( fd_blockstore_t * blockstore, fd_shred_t const * shred ) {
-  // FD_LOG_NOTICE(( "[%s] slot %lu idx %u", __func__, shred->slot, shred->idx ));
+  //FD_LOG_NOTICE(( "[%s] slot %lu idx %u", __func__, shred->slot, shred->idx ));
 
   ulong slot = shred->slot;
   fd_shred_key_t key = { slot, .idx = shred->idx };
@@ -1211,6 +1211,7 @@ fd_blockstore_shred_insert( fd_blockstore_t * blockstore, fd_shred_t const * shr
       fd_buf_shred_map_query_t query[1]  = { 0 };
       int err = fd_buf_shred_map_query_try( blockstore->shred_map, &key, NULL, query );
       if( FD_UNLIKELY( err == FD_MAP_ERR_CORRUPT ) ) FD_LOG_ERR(( "[%s] %s. shred: (%lu, %u)", __func__, fd_buf_shred_map_strerror( err ), slot, shred->idx ));
+      if( FD_UNLIKELY( err == FD_MAP_ERR_AGAIN ) ) continue;
       fd_buf_shred_t * buf_shred = fd_buf_shred_map_query_ele( query );
       buf_shred->eqvoc = ( fd_shred_payload_sz( &buf_shred->hdr ) == fd_shred_payload_sz( shred ) &&
                            memcmp( buf_shred, shred, fd_shred_payload_sz( shred ) ) );
@@ -1295,13 +1296,6 @@ fd_blockstore_shred_insert( fd_blockstore_t * blockstore, fd_shred_t const * shr
   err = fd_block_map_prepare( blockstore->block_map, &slot, NULL, query, FD_MAP_FLAG_BLOCKING );
   fd_block_meta_t * block_map_entry = fd_block_map_query_ele( query );   /* should be impossible for this to fail */
 
-  FD_LOG_INFO(( "shred: (%lu, %u). consumed: %u, received: %u, complete: %u",
-                 slot,
-                 shred->idx,
-                 block_map_entry->buffered_idx,
-                 block_map_entry->received_idx,
-                 block_map_entry->slot_complete_idx ));
-
   /* Advance the buffered_idx watermark. */
 
   uint prev_buffered_idx = block_map_entry->buffered_idx;
@@ -1333,6 +1327,13 @@ fd_blockstore_shred_insert( fd_blockstore_t * blockstore, fd_shred_t const * shr
   ulong buffered_idx      = block_map_entry->buffered_idx;
   ulong slot_complete_idx = block_map_entry->slot_complete_idx;
   ulong parent_slot       = block_map_entry->parent_slot;
+
+  FD_LOG_INFO(( "shred: (%lu, %u). consumed: %u, received: %u, complete: %u",
+               slot,
+               shred->idx,
+               block_map_entry->buffered_idx,
+               block_map_entry->received_idx,
+               block_map_entry->slot_complete_idx ));
   fd_block_map_publish( query );
 
   /* Update ancestry metadata: parent_slot, is_connected, next_slot. */
@@ -1388,6 +1389,7 @@ fd_blockstore_block_meta_test( fd_blockstore_t * blockstore, ulong slot ) {
   while( err == FD_MAP_ERR_AGAIN ){
     fd_block_map_query_t query[1] = { 0 };
     err = fd_block_map_query_try( blockstore->block_map, &slot, NULL, query, 0 );
+    if( err == FD_MAP_ERR_AGAIN ) continue;
     if( err == FD_MAP_ERR_KEY ) return 0;
     err = fd_block_map_query_test( query );
   }
@@ -1422,12 +1424,13 @@ fd_buf_shred_query_copy_data( fd_blockstore_t * blockstore, ulong slot, uint idx
   while( err == FD_MAP_ERR_AGAIN ) {
     fd_buf_shred_map_query_t query[1] = { 0 };
     err = fd_buf_shred_map_query_try( blockstore->shred_map, &key, NULL, query );
+    if( FD_UNLIKELY( err == FD_MAP_ERR_KEY ) ) return -1;
+    if( FD_UNLIKELY( err == FD_MAP_ERR_CORRUPT ) ) FD_LOG_ERR(( "[%s] map corrupt. shred %lu %u", __func__, slot, idx ));
+    if( FD_UNLIKELY( err == FD_MAP_ERR_AGAIN ) ) continue;
     fd_buf_shred_t const * shred = fd_buf_shred_map_query_ele_const( query );
     sz = fd_shred_sz( &shred->hdr );
     memcpy( buf, shred->buf, sz );
     err = fd_buf_shred_map_query_test( query );
-    if( FD_UNLIKELY( err == FD_MAP_ERR_KEY ) ) return -1;
-    if( FD_UNLIKELY( err == FD_MAP_ERR_CORRUPT ) ) FD_LOG_ERR(( "[%s] map corrupt. shred %lu %u", __func__, slot, idx ));
   }
   FD_TEST( !err );
   return (long)sz;
@@ -1536,6 +1539,7 @@ fd_blockstore_slice_query( fd_blockstore_t * blockstore,
         FD_LOG_WARNING(( "[%s] key: (%lu, %u) %s", __func__, slot, idx, fd_buf_shred_map_strerror( err ) ));
         return FD_BLOCKSTORE_ERR_KEY;
       }
+      if( FD_UNLIKELY( err == FD_MAP_ERR_AGAIN ) ) continue;
 
       fd_buf_shred_t const * shred      = fd_buf_shred_map_query_ele_const( query );
       uchar const *          payload    = fd_shred_data_payload( &shred->hdr );
@@ -1659,11 +1663,13 @@ fd_blockstore_block_data_query_volatile( fd_blockstore_t *    blockstore,
 
   uchar * prev_data_out = NULL;
   ulong prev_sz = 0;
+  int err;
   for(;;) {
     //if( FD_UNLIKELY( fd_rwseq_start_concur_read( &blockstore->shmem->lock, &seqnum ) ) ) continue;
     fd_block_map_query_t quer[1] = { 0 };
-    int err = fd_block_map_query_try( blockstore->block_map, &slot, NULL, quer, 0 );
+    err = fd_block_map_query_try( blockstore->block_map, &slot, NULL, quer, 0 );
     fd_block_meta_t const * query = fd_block_map_query_ele( quer );
+    if( FD_UNLIKELY( err == FD_MAP_ERR_AGAIN )) continue;
     if( FD_UNLIKELY( !query ) ) return FD_BLOCKSTORE_ERR_SLOT_MISSING;
 
     memcpy( block_map_entry_out, query, sizeof( fd_block_meta_t ) );
@@ -1914,9 +1920,10 @@ fd_blockstore_log_block_status( fd_blockstore_t * blockstore, ulong around_slot 
   for( ulong i = around_slot - 5; i < around_slot + 20; ++i ) {
     int err = FD_MAP_ERR_AGAIN;
     while( err == FD_MAP_ERR_AGAIN ){
-      int err = fd_block_map_query_try( blockstore->block_map, &i, NULL, query, 0 );
+      err = fd_block_map_query_try( blockstore->block_map, &i, NULL, query, 0 );
       fd_block_meta_t * slot_entry = fd_block_map_query_ele( query );
       if( err == FD_MAP_ERR_KEY ) break;
+      if( err == FD_MAP_ERR_AGAIN ) continue;
       received_idx = slot_entry->received_idx;
       buffered_idx = slot_entry->buffered_idx;
       slot_complete_idx = slot_entry->slot_complete_idx;

@@ -350,7 +350,7 @@ typedef struct fd_block_meta fd_block_meta_t;
 #define MAP_KEY         slot
 #define MAP_ELE_IS_FREE(ctx, ele) ((ele)->slot == 0) /* TODO: check not ulong max -- this broke the map so */
 #define MAP_ELE_FREE(ctx, ele)    ((ele)->slot = 0)
-//#define MAP_KEY_HASH(key, seed)   ((*(key)) ^ (seed))
+#define MAP_KEY_HASH(key, seed)   (*(key))
 #include "../../util/tmpl/fd_map_slot_para.c"
 
 #define BLOCK_META_LOCK_CNT  128UL

@@ -397,26 +397,24 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
 
     uchar * out_buf = fd_chunk_to_laddr( ctx->replay_out_mem, ctx->replay_out_chunk );
 
-    fd_blockstore_start_read( ctx->blockstore );
-    fd_block_meta_t * block_map_entry = fd_blockstore_block_map_query( ctx->blockstore, slot );
-    fd_block_t * block = fd_blockstore_block_query( ctx->blockstore, slot );
-
-    if( block == NULL ) { /* needed later down below for txn iteration */
-      FD_TEST( fd_block_map_verify( ctx->blockstore->block_map ) == FD_MAP_SUCCESS );
-      __asm__("int $3");
-      FD_LOG_ERR(( "could not find block - slot: %lu", slot ));
+    if( !fd_blockstore_shreds_complete( ctx->blockstore, slot ) ) {
+      FD_LOG_ERR(( "Block does not exist." ));
     }
 
-    if( block_map_entry == NULL ) {
-      FD_LOG_ERR(( "could not find slot meta" ));
+    fd_block_map_query_t query[1];
+    int err = FD_MAP_ERR_AGAIN;
+    while( err == FD_MAP_ERR_AGAIN ) {
+      err = fd_block_map_query_try( ctx->blockstore->block_map, &slot, NULL, query, 0 );
+      fd_block_meta_t * meta = fd_block_map_query_ele( query );
+      if( FD_UNLIKELY( err == FD_MAP_ERR_KEY ) ) FD_LOG_ERR(( "Block does not exist." ));
+      if( FD_UNLIKELY( err == FD_MAP_ERR_AGAIN ) ) continue;
+      FD_STORE( ulong, out_buf, meta->parent_slot );
+      err = fd_block_map_query_test( query );
     }
-    FD_STORE( ulong, out_buf, block_map_entry->parent_slot );
-    fd_blockstore_end_read( ctx->blockstore );
+
     out_buf += sizeof(ulong);
-    int err = fd_blockstore_block_hash_query( ctx->blockstore, slot, out_buf, sizeof(fd_hash_t) );
-    if( FD_UNLIKELY( err ) ){
-      FD_LOG_ERR(( "could not find slot meta" ));
-    }
+    err = fd_blockstore_block_hash_query( ctx->blockstore, slot, out_buf, sizeof(fd_hash_t) );
+    if( FD_UNLIKELY( err ) ) FD_LOG_ERR(( "could not find slot meta" ));
     fd_hash_t * block_hash = fd_type_pun( out_buf );
 
     out_buf += sizeof(fd_hash_t);
@@ -433,7 +431,7 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
       if( FD_UNLIKELY( fd_trusted_slots_find( ctx->trusted_slots, slot ) ) ) {
         /* if is caught up and is leader */
         replay_sig = fd_disco_replay_sig( slot, REPLAY_FLAG_FINISHED_BLOCK );
-        FD_LOG_INFO(( "packed block prepared - slot: %lu, mblks: %lu, blockhash: %s, txn_cnt: %lu, shred_cnt: %lu, data_sz: %lu", slot, block->micros_cnt, FD_BASE58_ENC_32_ALLOCA( block_hash->uc ), block->txns_cnt, block->shreds_cnt, block->data_sz ));
+        FD_LOG_INFO(( "packed block prepared - slot: %lu blockhash: %s", slot, FD_BASE58_ENC_32_ALLOCA( block_hash->uc ) ));
       } else {
         replay_sig = fd_disco_replay_sig( slot, REPLAY_FLAG_FINISHED_BLOCK | REPLAY_FLAG_MICROBLOCK | caught_up_flag );
       }

@@ -1350,12 +1350,12 @@ fd_runtime_block_execute_prepare( fd_exec_slot_ctx_t * slot_ctx,
                                   fd_spad_t *          runtime_spad ) {
 
   if( slot_ctx->slot_bank.slot != 0UL ) {
-    fd_blockstore_start_write( slot_ctx->blockstore );
     fd_blockstore_block_height_update( slot_ctx->blockstore,
                                        slot_ctx->slot_bank.slot,
                                        slot_ctx->slot_bank.block_height );
+    fd_blockstore_start_read( slot_ctx->blockstore );
     slot_ctx->block = fd_blockstore_block_query( slot_ctx->blockstore, slot_ctx->slot_bank.slot ); /* used for txn metadata & filling blk rewards later on */
-    fd_blockstore_end_write( slot_ctx->blockstore );
+    fd_blockstore_end_read( slot_ctx->blockstore );
   }
 
   slot_ctx->slot_bank.collected_execution_fees = 0UL;

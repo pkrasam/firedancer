@@ -1303,7 +1303,7 @@ MAP_(key_eq)( MAP_KEY_T const * k0,
 
 FD_FN_PURE static inline ulong
 MAP_(key_hash)( MAP_KEY_T const * key,
-                ulong             seed ) {
+                ulong             seed FD_PARAM_UNUSED ) {
   return (MAP_KEY_HASH( (key), (seed) ));
 }
 

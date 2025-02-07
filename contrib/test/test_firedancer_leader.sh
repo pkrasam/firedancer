@@ -6,7 +6,7 @@ IFS=$'\n\t'
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 FD_DIR="$SCRIPT_DIR/../.."
 OBJDIR=${OBJDIR:-build/native/${CC}}
-AGAVE_PATH=${AGAVE_PATH:='./agave/target/release'}
+AGAVE_PATH=${AGAVE_PATH:='/data/emwang/agave/release'}
 
 cd ../test-ledger/
 
@@ -76,7 +76,7 @@ name = \"fd1\"
     vote_account_path = \"fd-vote-keypair.json\"
 [blockstore]
     shred_max = 1024
-    block_max = 300
+    block_max = 4096
     idx_max = 1024
     txn_max = 1024
     alloc_max = 10737418240

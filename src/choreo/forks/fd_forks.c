@@ -194,18 +194,15 @@ slot_ctx_restore( ulong                 slot,
                   fd_valloc_t           valloc,
                   fd_exec_slot_ctx_t *  slot_ctx_out ) {
   fd_funk_txn_t *  txn_map = fd_funk_txn_map( funk, fd_funk_wksp( funk ) );
-
-  fd_blockstore_start_read( blockstore );
-  fd_block_meta_t const * block = fd_blockstore_block_map_query( blockstore, slot );
   bool block_exists = fd_blockstore_shreds_complete( blockstore, slot );
-  fd_blockstore_end_read( blockstore );
 
   FD_LOG_DEBUG( ( "Current slot %lu", slot ) );
   if( !block_exists )
     FD_LOG_ERR( ( "missing block at slot we're trying to restore" ) );
 
   fd_funk_txn_xid_t xid;
-  memcpy( xid.uc, block->block_hash.uc, sizeof( fd_funk_txn_xid_t ) );
+  int err = fd_blockstore_block_hash_query( blockstore, slot, xid.uc, sizeof( fd_funk_txn_xid_t ) );
+  if ( FD_UNLIKELY( err ) ) FD_LOG_ERR( ( "failed to read block hash" ) );
   xid.ul[0]             = slot;
   fd_funk_rec_key_t id  = fd_runtime_slot_bank_key();
   fd_funk_txn_t *   txn = fd_funk_txn_query( &xid, txn_map );
@@ -285,11 +282,9 @@ fd_forks_prepare( fd_forks_t const *    forks,
 
   /* Check the parent block is present in the blockstore and executed. */
 
-  fd_blockstore_start_read( blockstore );
   if( FD_UNLIKELY( !fd_blockstore_shreds_complete( blockstore, parent_slot ) ) ) {
     FD_LOG_WARNING( ( "fd_forks_prepare missing parent_slot %lu", parent_slot ) );
   }
-  fd_blockstore_end_read( blockstore );
 
   /* Query for parent_slot in the frontier. */
 
