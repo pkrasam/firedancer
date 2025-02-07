@@ -3232,6 +3232,7 @@ fd_quic_gen_handshake_done_frame( fd_quic_conn_t *     conn,
                                   uchar *              payload_end,
                                   fd_quic_pkt_meta_t * pkt_meta,
                                   ulong                now ) {
+  FD_DTRACE_PROBE_1( quic_gen_handshake_done_frame, conn->our_conn_id );
   if( conn->handshake_done_send==0 ) return 0UL;
   conn->handshake_done_send = 0;
   if( FD_UNLIKELY( conn->handshake_done_ackd  ) ) return 0UL;
@@ -3673,6 +3674,7 @@ fd_quic_conn_tx( fd_quic_t      * quic,
 
         hdr_sz = fd_quic_encode_initial( cur_ptr, cur_sz, &initial );
         hdr_len_field = cur_ptr + hdr_sz - 6; /* 2 byte len, 4 byte packet number */
+        FD_DTRACE_PROBE_2( quic_encode_initial, initial.src_conn_id, initial.dst_conn_id );
         break;
       }
 
@@ -3694,6 +3696,7 @@ fd_quic_conn_tx( fd_quic_t      * quic,
 
         hdr_sz = fd_quic_encode_handshake( cur_ptr, cur_sz, &handshake );
         hdr_len_field = cur_ptr + hdr_sz - 6; /* 2 byte len, 4 byte packet number */
+        FD_DTRACE_PROBE_2( quic_encode_handshake, handshake.src_conn_id, handshake.dst_conn_id );
         break;
       }
 
@@ -3709,6 +3712,7 @@ fd_quic_conn_tx( fd_quic_t      * quic,
         one_rtt.pkt_num          = pkt_number;
 
         hdr_sz = fd_quic_encode_one_rtt( cur_ptr, cur_sz, &one_rtt );
+        FD_DTRACE_PROBE_2( quic_encode_one_rtt, one_rtt.dst_conn_id, one_rtt.pkt_num );
         break;
       }
 
@@ -4513,6 +4517,10 @@ fd_quic_pkt_meta_retry( fd_quic_t *          quic,
       cnt_freed += fd_quic_abandon_enc_level( conn, peer_enc_level );
       continue;
     }
+
+    quic->metrics.pkt_retransmissions_cnt++;
+
+    FD_DTRACE_PROBE_4( quic_pkt_meta_retry, conn->our_conn_id, pkt_meta->pkt_number, pkt_meta->expiry, pkt_meta->flags);
 
     /* set the data to retry */
     uint flags = pkt_meta->flags;
