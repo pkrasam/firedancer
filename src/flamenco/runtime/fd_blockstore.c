@@ -653,12 +653,24 @@ fd_blockstore_slot_remove( fd_blockstore_t * blockstore, ulong slot ) {
   FD_LOG_NOTICE(( "[%s] slot: %lu", __func__, slot ));
 
   /* It is not safe to remove a replaying block. */
-  fd_block_map_query_t query[1] = { 0};
-  int err = fd_block_map_query_try( blockstore->block_map, &slot, NULL, query, FD_MAP_FLAG_BLOCKING );
-  fd_block_meta_t * block_map_entry = fd_block_map_query_ele( query );
-  if( FD_UNLIKELY( block_map_entry && fd_uchar_extract_bit( block_map_entry->flags, FD_BLOCK_FLAG_REPLAYING ) ) ) {
-    FD_LOG_WARNING(( "[%s] slot %lu has replay in progress. not removing.", __func__, slot ));
-    return;
+  fd_block_map_query_t query[1] = { 0 };
+  ulong parent_slot  = FD_SLOT_NULL;
+  ulong block_gaddr  = 0;
+  ulong received_idx = 0;
+  int    err  = FD_MAP_ERR_AGAIN;
+  while( err == FD_MAP_ERR_AGAIN ) {
+    err = fd_block_map_query_try( blockstore->block_map, &slot, NULL, query, 0 );
+    if( FD_UNLIKELY( err == FD_MAP_ERR_AGAIN ) ) continue;
+    if( FD_UNLIKELY( err ) ) return; /* slot not found */
+    fd_block_meta_t * block_map_entry = fd_block_map_query_ele( query );
+    if( FD_UNLIKELY( block_map_entry && fd_uchar_extract_bit( block_map_entry->flags, FD_BLOCK_FLAG_REPLAYING ) ) ) {
+      FD_LOG_WARNING(( "[%s] slot %lu has replay in progress. not removing.", __func__, slot ));
+      return;
+    }
+    parent_slot  = block_map_entry->parent_slot;
+    block_gaddr  = block_map_entry->block_gaddr;
+    received_idx = block_map_entry->received_idx;
+    err = fd_block_map_query_test( query );
   }
 
   err = fd_block_map_remove( blockstore->block_map, &slot, query, FD_MAP_FLAG_BLOCKING );
@@ -667,7 +679,7 @@ fd_blockstore_slot_remove( fd_blockstore_t * blockstore, ulong slot ) {
 
   /* Unlink slot from its parent only if it is not published. */
   // TODO: no blocking no blocking!!!!
-  err = fd_block_map_prepare( blockstore->block_map, &block_map_entry->parent_slot, NULL, query, FD_MAP_FLAG_BLOCKING );
+  err = fd_block_map_prepare( blockstore->block_map, &parent_slot, NULL, query, FD_MAP_FLAG_BLOCKING );
   fd_block_meta_t * parent_block_map_entry = fd_block_map_query_ele( query );
   if( FD_LIKELY( parent_block_map_entry ) ) {
     for( ulong i = 0; i < parent_block_map_entry->child_slot_cnt; i++ ) {
@@ -676,19 +688,19 @@ fd_blockstore_slot_remove( fd_blockstore_t * blockstore, ulong slot ) {
             parent_block_map_entry->child_slots[--parent_block_map_entry->child_slot_cnt];
       }
     }
-    fd_block_map_publish( query );
   }
+  fd_block_map_publish( query );
 
   /* block_gaddr 0 indicates it hasn't received all shreds yet.
 
      TODO refactor to use FD_BLOCK_FLAG_COMPLETED. */
 
-  if( FD_LIKELY( block_map_entry->block_gaddr == 0 ) ) {
+  if( FD_LIKELY( block_gaddr == 0 ) ) {
 
     /* Remove buf_shreds if there's no block yet (we haven't received all shreds). */
 
-    for( uint idx = 0; idx < block_map_entry->received_idx; idx++ ) {
-      fd_blockstore_shred_remove( blockstore, block_map_entry->slot, idx );
+    for( uint idx = 0; idx < received_idx; idx++ ) {
+      fd_blockstore_shred_remove( blockstore, slot, idx );
     }
 
     /* Return early because there are no allocations without a block. */
@@ -702,11 +714,11 @@ fd_blockstore_slot_remove( fd_blockstore_t * blockstore, ulong slot ) {
   fd_alloc_t * alloc = fd_blockstore_alloc( blockstore );
 
   fd_txn_map_t * txn_map = fd_blockstore_txn_map( blockstore );
-  fd_block_t *   block   = fd_wksp_laddr_fast( wksp, block_map_entry->block_gaddr );
+  fd_block_t *   block   = fd_wksp_laddr_fast( wksp, block_gaddr );
 
   /* DO THIS FIRST FOR THREAD SAFETY */
   FD_COMPILER_MFENCE();
-  block_map_entry->block_gaddr = 0;
+  //block_map_entry->block_gaddr = 0;
 
   uchar *              data = fd_wksp_laddr_fast( wksp, block->data_gaddr );
   fd_block_txn_t * txns = fd_wksp_laddr_fast( wksp, block->txns_gaddr );

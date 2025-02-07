@@ -1124,9 +1124,9 @@ fd_runtime_microblock_verify_ticks( fd_exec_slot_ctx_t *        slot_ctx,
     we cache the results of some checks but do not immediately return
     an error.
   */
-  fd_blockstore_start_write( slot_ctx->blockstore );
-  fd_block_meta_t * query = fd_blockstore_block_map_query( slot_ctx->blockstore, slot );
-  FD_TEST( query != NULL );
+  fd_block_map_query_t quer[1];
+  fd_block_map_prepare( slot_ctx->blockstore->block_map, &slot, NULL, quer, FD_MAP_FLAG_BLOCKING );
+  fd_block_meta_t * query = fd_block_map_query_ele( quer );
 
   query->tick_hash_count_accum = fd_ulong_sat_add( query->tick_hash_count_accum, hdr->hash_cnt );
   if( hdr->txn_cnt == 0UL ) {
@@ -1147,7 +1147,7 @@ fd_runtime_microblock_verify_ticks( fd_exec_slot_ctx_t *        slot_ctx,
   }
 
   ulong next_tick_height = tick_height + query->ticks_consumed;
-  fd_blockstore_end_write( slot_ctx->blockstore );
+  fd_block_map_publish( quer );
 
   if( FD_UNLIKELY( next_tick_height > max_tick_height ) ) {
     FD_LOG_WARNING(( "Too many ticks tick_height %lu max_tick_height %lu hashes_per_tick %lu tick_count %lu", tick_height, max_tick_height, hashes_per_tick, query->ticks_consumed ));
