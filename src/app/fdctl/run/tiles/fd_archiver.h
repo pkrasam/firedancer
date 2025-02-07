@@ -16,8 +16,8 @@ struct __attribute__((aligned(1UL))) fd_archiver_frag_header {
   uint version;
   /* The identifier of the tile that the frag was received from */
   uint tile_id;
-  /* The timestamp when the frag was created */
-  long timestamp;
+  /* Number of ticks since the previous fragment */
+  long ticks_since_prev_fragment;
   /* Size of the fragment data portion, immediately following this header */
   ulong sz;
   /* Signature of the fragment */

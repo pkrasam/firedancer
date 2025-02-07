@@ -169,7 +169,7 @@ during_frag( fd_archiver_feeder_tile_ctx_t * ctx,
     header->magic                      = FD_ARCHIVER_HEADER_MAGIC;
     header->version                    = FD_ARCHIVER_HEADER_VERSION;
     header->tile_id                    = ctx->link_to_header_tile_ids[ in_idx ];
-    /* header->timestamp is set in the single writer tile, so that we have a total order */
+    /* header->ns_since_prev_fragment is set in the single writer tile, so that we have a total order */
     header->sz                         = sz;
     header->sig                        = sig;
 

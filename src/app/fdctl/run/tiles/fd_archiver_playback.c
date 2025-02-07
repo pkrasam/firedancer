@@ -39,10 +39,9 @@ struct fd_archiver_playback_tile_ctx {
 
   fd_archiver_playback_stats_t stats;
 
-  double tick_per_ns;
+  long tick_per_ms;
 
-  long start_tile_ts_ns;
-  long start_archive_frag_ts_ns;
+  long next_publish_tick;
 
   ulong pending_publish_link_idx;
   fd_archiver_frag_header_t pending_publish_header;
@@ -104,6 +103,12 @@ scratch_footprint( fd_topo_tile_t const * tile ) {
   return FD_LAYOUT_FINI( l, scratch_align() );
 }
 
+static inline long 
+now( fd_archiver_playback_tile_ctx_t * ctx ) {
+  (void)ctx;
+  return fd_tickcount();
+}
+
 static void
 privileged_init( fd_topo_t *      topo,
                  fd_topo_tile_t * tile ) {
@@ -132,7 +137,7 @@ unprivileged_init( fd_topo_t *      topo,
   fd_archiver_playback_tile_ctx_t * ctx = FD_SCRATCH_ALLOC_APPEND( l, alignof(fd_archiver_playback_tile_ctx_t), sizeof(fd_archiver_playback_tile_ctx_t) );
   FD_SCRATCH_ALLOC_FINI( l, scratch_align() );
 
-  ctx->tick_per_ns = fd_tempo_tick_per_ns( NULL );
+  ctx->tick_per_ms = (long)(fd_tempo_tick_per_ns( NULL ) * 1000000.);
 
   /* mmap the file in */
   struct stat st;
@@ -166,25 +171,15 @@ unprivileged_init( fd_topo_t *      topo,
     ctx->out[ i ].wmark  = fd_dcache_compact_wmark( link_wksp->wksp, link->dcache, link->mtu );
     ctx->out[ i ].chunk  = ctx->out[ i ].chunk0;
   }
-
-}
-
-static inline long 
-now( fd_archiver_playback_tile_ctx_t * ctx ) {
-  return (long)(((double)fd_tickcount()) / ctx->tick_per_ns);
 }
 
 static inline int
 should_delay_publish( fd_archiver_playback_tile_ctx_t * ctx ) {
-  if( FD_UNLIKELY(( ctx->start_tile_ts_ns == 0L )) ) {
+  if( FD_UNLIKELY(( ctx->next_publish_tick == 0L )) ) {
     return 0;
   }
 
-  long relative_tile_ts         = now( ctx ) - ctx->start_tile_ts_ns; /* FIXME: read timestamp out of archive file first? don't rely on this */
-  long relative_archive_frag_ts = ctx->pending_publish_header.timestamp - ctx->start_archive_frag_ts_ns;
-
-  /* TODO: maybe have some tolerance here? */
-  return relative_tile_ts < relative_archive_frag_ts;
+  return now( ctx ) < ctx->next_publish_tick;
 }
 
 static inline void
@@ -212,7 +207,7 @@ after_credit( fd_archiver_playback_tile_ctx_t *     ctx,
   (void)charge_busy;
 
   /* Check to see if we have a pending frag ready to publish */
-  if( FD_LIKELY(( ctx->pending_publish_header.timestamp )) ) {
+  if( FD_LIKELY(( ctx->pending_publish_header.magic )) ) {
     /* If we should delay, do not consume any more fragments from the archive but instead return */
     if( FD_UNLIKELY( should_delay_publish( ctx ) )) {
       return;
@@ -239,12 +234,6 @@ after_credit( fd_archiver_playback_tile_ctx_t *     ctx,
   ctx->archive_off += FD_ARCHIVER_FRAG_HEADER_FOOTPRINT;
   if( FD_UNLIKELY( ctx->pending_publish_header.magic != FD_ARCHIVER_HEADER_MAGIC ) ) {
     FD_LOG_ERR(( "bad magic in archive header: %lu", ctx->pending_publish_header.magic ));
-  }
-
-  /* On the very first fragment, initialize reference times. */
-  if( FD_UNLIKELY( ctx->start_tile_ts_ns == 0L ) ) {
-    ctx->start_tile_ts_ns         = now( ctx );
-    ctx->start_archive_frag_ts_ns = ctx->pending_publish_header.timestamp;
   }
 
   /* Determine the output link on which to send the frag */
@@ -285,6 +274,7 @@ after_credit( fd_archiver_playback_tile_ctx_t *     ctx,
   uchar       * dst      = (uchar *)fd_chunk_to_laddr( ctx->out[ out_link_idx ].mem, ctx->out[ out_link_idx ].chunk );
   fd_memcpy( dst, frag_ptr, ctx->pending_publish_header.sz );
   ctx->archive_off += ctx->pending_publish_header.sz;
+  ctx->next_publish_tick = now( ctx ) + ctx->pending_publish_header.ticks_since_prev_fragment;
 }
 
 #define STEM_BURST (1UL)

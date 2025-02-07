@@ -34,10 +34,12 @@ typedef struct {
 } fd_archiver_writer_in_ctx_t;
 
 struct fd_archiver_writer_tile_ctx {
-  double                      tick_per_ns;
+  long                        tick_per_ms;
   fd_archiver_writer_in_ctx_t in[ 32 ];
 
   fd_archiver_writer_stats_t stats;
+
+  long last_packet_ticks;
 
   int     archive_file_fd;
   uchar * mmap_addr;
@@ -169,20 +171,21 @@ unprivileged_init( fd_topo_t *      topo,
     ctx->in[ i ].wmark  = fd_dcache_compact_wmark ( ctx->in[ i ].mem, link->dcache, link->mtu );
   }
 
-  ctx->tick_per_ns = fd_tempo_tick_per_ns( NULL );
+  ctx->tick_per_ms = (long)(fd_tempo_tick_per_ns( NULL ) * 1000000.);
 }
 
 static inline long 
 now( fd_archiver_writer_tile_ctx_t * ctx ) {
-  return (long)(((double)fd_tickcount()) / ctx->tick_per_ns);
+  (void)ctx;
+  return fd_tickcount();
 }
 
 static void
 during_housekeeping( fd_archiver_writer_tile_ctx_t * ctx ) {
   (void)ctx;
-  // if( msync( ctx->mmap_addr, ctx->mmap_size, MS_ASYNC ) != 0 ) {
-  //   FD_LOG_WARNING(( "msync failed. errno=%i", errno ));
-  // }
+  if( msync( ctx->mmap_addr, ctx->mmap_size, MS_ASYNC ) != 0 ) {
+    FD_LOG_WARNING(( "msync failed. errno=%i", errno ));
+  }
 
   FD_LOG_WARNING(( "writer stats: net_shred_in_cnt=%lu net_quic_in_cnt=%lu net_gossip_in_cnt=%lu net_repair_in_cnt=%lu",
     ctx->stats.net_shred_in_cnt,
@@ -240,7 +243,15 @@ during_frag( fd_archiver_writer_tile_ctx_t * ctx,
 
   /* Update the timestamp of the fragment, so that we have a total ordering */
   fd_archiver_frag_header_t * header = fd_type_pun( src );
-  header->timestamp                  = now( ctx );
+
+  /* Set the relative delay on the packet */
+  long now_ticks = now( ctx );
+  if( ctx->last_packet_ticks == 0L ) {
+    header->ticks_since_prev_fragment = 0L;
+  } else {
+    header->ticks_since_prev_fragment = now_ticks - ctx->last_packet_ticks;
+  }
+  ctx->last_packet_ticks = now_ticks;
 
   /* Resize the mmap region if necessary */
   if( FD_UNLIKELY( ctx->mmap_off + sz > ctx->mmap_size ) ) {
