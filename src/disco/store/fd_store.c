@@ -237,9 +237,13 @@ fd_store_shred_insert( fd_store_t * store,
 
   fd_blockstore_t * blockstore = store->blockstore;
 
+  fd_blockstore_start_read( blockstore );
   if (shred->slot < blockstore->shmem->smr) {
+    fd_blockstore_end_read( blockstore );
     return FD_BLOCKSTORE_SUCCESS;
   }
+  fd_blockstore_end_read( blockstore );
+
   uchar shred_type = fd_shred_type( shred->variant );
   if( shred_type != FD_SHRED_TYPE_LEGACY_DATA
       && shred_type != FD_SHRED_TYPE_MERKLE_DATA
@@ -378,8 +382,28 @@ fd_store_slot_repair( fd_store_t * store,
   backoff->last_repair_time = store->now;
 
   ulong repair_req_cnt = 0;
-  fd_blockstore_start_read( store->blockstore );
-  fd_block_meta_t * block_map_entry = fd_blockstore_block_map_query( store->blockstore, slot );
+
+  int block_map_entry = 0;
+  uint complete_idx   = UINT_MAX;
+  uint received_idx   = 0;
+  uint buffered_idx   = 0;
+  int err = FD_MAP_ERR_AGAIN;
+  while( err == FD_MAP_ERR_AGAIN ){
+    fd_block_map_query_t query[1] = { 0 };
+    err = fd_block_map_query_try( store->blockstore->block_map, &slot, NULL, query, 0 );
+    fd_block_meta_t * meta = fd_block_map_query_ele( query );
+    if( FD_UNLIKELY( err == FD_MAP_ERR_AGAIN ) ) continue;
+    if( err == FD_MAP_ERR_KEY ) {
+      block_map_entry = 0;
+      break;
+    } else {
+      block_map_entry = 1;
+      complete_idx = meta->slot_complete_idx;
+      received_idx = meta->received_idx;
+      buffered_idx = meta->buffered_idx;
+    }
+    err = fd_block_map_query_test( query );
+  }
 
   if( FD_LIKELY( !block_map_entry ) ) {
     /* We haven't received any shreds for this slot yet */
@@ -391,11 +415,9 @@ fd_store_slot_repair( fd_store_t * store,
   } else {
     /* We've received at least one shred, so fill in what's missing */
 
-    uint complete_idx = block_map_entry->slot_complete_idx;
-
     /* We don't know the last index yet */
     if( FD_UNLIKELY( complete_idx == UINT_MAX ) ) {
-      complete_idx = block_map_entry->received_idx - 1;
+      complete_idx = received_idx - 1;
       fd_repair_request_t * repair_req = &out_repair_reqs[repair_req_cnt++];
       repair_req->shred_index = complete_idx;
       repair_req->slot = slot;
@@ -404,8 +426,7 @@ fd_store_slot_repair( fd_store_t * store,
 
     if( repair_req_cnt==out_repair_reqs_sz ) {
       backoff->last_backoff_duration += backoff->last_backoff_duration>>2;
-      FD_LOG_INFO( ( "[repair] MAX need %lu [%u, %u], sent %lu requests (backoff: %ld ms)", slot, block_map_entry->buffered_idx + 1, complete_idx, repair_req_cnt, backoff->last_backoff_duration/(long)1e6 ) );
-      fd_blockstore_end_read( store->blockstore );
+      FD_LOG_INFO( ( "[repair] MAX need %lu [%u, %u], sent %lu requests (backoff: %ld ms)", slot, buffered_idx + 1, complete_idx, repair_req_cnt, backoff->last_backoff_duration/(long)1e6 ) );
       return repair_req_cnt;
     }
 
@@ -414,9 +435,23 @@ fd_store_slot_repair( fd_store_t * store,
     int good = 0;
     for( uint i = 0; i < 6; ++i ) {
       anc_slot  = fd_blockstore_parent_slot_query( store->blockstore, anc_slot );
-      bool anc_complete = fd_blockstore_shreds_complete( store->blockstore, anc_slot );
-      fd_block_meta_t * anc_block_map_entry = fd_blockstore_block_map_query( store->blockstore, anc_slot );
-      if( anc_complete && fd_uchar_extract_bit( anc_block_map_entry->flags, FD_BLOCK_FLAG_PROCESSED ) ) {
+      int anc_complete = fd_blockstore_shreds_complete( store->blockstore, anc_slot );
+
+      /* get ancestor flags */
+      uchar anc_flags = 0;
+      int err = FD_MAP_ERR_AGAIN;
+      while( err == FD_MAP_ERR_AGAIN ){
+        fd_block_map_query_t query[1] = { 0 };
+        err = fd_block_map_query_try( store->blockstore->block_map, &anc_slot, NULL, query, 0 );
+        fd_block_meta_t * meta = fd_block_map_query_ele( query );
+        if( FD_UNLIKELY( err == FD_MAP_ERR_AGAIN ) ) continue;
+        if( err == FD_MAP_ERR_KEY ) break;
+        anc_flags = meta->flags;
+        err = fd_block_map_query_test( query );
+      }
+      //fd_block_meta_t * anc_block_map_entry = fd_blockstore_block_map_query( store->blockstore, anc_slot );
+
+      if( anc_complete && fd_uchar_extract_bit( anc_flags, FD_BLOCK_FLAG_PROCESSED ) ) {
         good = 1;
         out_repair_reqs_sz /= (i>>1)+1U; /* Slow roll blocks that are further out */
         break;
@@ -424,12 +459,11 @@ fd_store_slot_repair( fd_store_t * store,
     }
 
     if( !good ) {
-      fd_blockstore_end_read( store->blockstore );
       return repair_req_cnt;
     }
 
     /* Fill in what's missing */
-    for( uint i = block_map_entry->buffered_idx + 1; i <= complete_idx; i++ ) {
+    for( uint i = buffered_idx + 1; i <= complete_idx; i++ ) {
       if( FD_UNLIKELY( fd_blockstore_shred_test( store->blockstore, slot, i ) ) ) continue;
 
       fd_repair_request_t * repair_req = &out_repair_reqs[repair_req_cnt++];
@@ -439,17 +473,15 @@ fd_store_slot_repair( fd_store_t * store,
 
       if( repair_req_cnt == out_repair_reqs_sz ) {
         backoff->last_backoff_duration += backoff->last_backoff_duration>>2;
-        FD_LOG_INFO( ( "[repair] MAX need %lu [%u, %u], sent %lu requests (backoff: %ld ms)", slot, block_map_entry->buffered_idx + 1, complete_idx, repair_req_cnt, backoff->last_backoff_duration/(long)1e6 ) );
-        fd_blockstore_end_read( store->blockstore );
+        FD_LOG_INFO( ( "[repair] MAX need %lu [%u, %u], sent %lu requests (backoff: %ld ms)", slot, buffered_idx + 1, complete_idx, repair_req_cnt, backoff->last_backoff_duration/(long)1e6 ) );
         return repair_req_cnt;
       }
     }
     if( repair_req_cnt ) {
       backoff->last_backoff_duration += backoff->last_backoff_duration>>2;
-      FD_LOG_INFO( ( "[repair] need %lu [%u, %u], sent %lu requests (backoff: %ld ms)", slot, block_map_entry->buffered_idx + 1, complete_idx, repair_req_cnt, backoff->last_backoff_duration/(long)1e6 ) );
+      FD_LOG_INFO( ( "[repair] need %lu [%u, %u], sent %lu requests (backoff: %ld ms)", slot, buffered_idx + 1, complete_idx, repair_req_cnt, backoff->last_backoff_duration/(long)1e6 ) );
     }
   }
 
-  fd_blockstore_end_read( store->blockstore );
   return repair_req_cnt;
 }

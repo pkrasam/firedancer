@@ -1119,7 +1119,7 @@ static void
 publish_slot_notifications( fd_replay_tile_ctx_t * ctx,
                             fd_stem_context_t *    stem,
                             fd_fork_t *            fork,
-                            fd_block_meta_t const * block_map_entry,
+                            ulong                  block_entry_block_height,
                             ulong                  curr_slot ) {
   long notify_time_ns = -fd_log_wallclock();
 #define NOTIFY_START msg = fd_chunk_to_laddr( ctx->notif_out_mem, ctx->notif_out_chunk )
@@ -1139,8 +1139,10 @@ publish_slot_notifications( fd_replay_tile_ctx_t * ctx,
     msg->type = FD_REPLAY_SLOT_TYPE;
     msg->slot_exec.slot = curr_slot;
     msg->slot_exec.parent = ctx->parent_slot;
+    fd_blockstore_start_read( ctx->blockstore );
     msg->slot_exec.root = ctx->blockstore->shmem->smr;
-    msg->slot_exec.height = ( block_map_entry ? block_map_entry->block_height : 0UL );
+    fd_blockstore_end_read( ctx->blockstore );
+    msg->slot_exec.height = block_entry_block_height;
     msg->slot_exec.transaction_count = fork->slot_ctx.slot_bank.transaction_count;
     memcpy( &msg->slot_exec.bank_hash, &fork->slot_ctx.slot_bank.banks_hash, sizeof( fd_hash_t ) );
     memcpy( &msg->slot_exec.block_hash, &ctx->blockhash, sizeof( fd_hash_t ) );
@@ -1796,17 +1798,21 @@ after_frag( fd_replay_tile_ctx_t * ctx,
     /* Push notifications for slot updates and reset block_map_entry flag */
     /**********************************************************************/
 
+    fd_block_map_query_t query[1] = { 0 };
+    fd_block_map_prepare( ctx->blockstore->block_map, &curr_slot, NULL, query, FD_MAP_FLAG_BLOCKING );
+    fd_block_meta_t * block_map_entry = fd_block_map_query_ele( query );
+
+    block_map_entry->flags   = fd_uchar_set_bit( block_map_entry->flags, FD_BLOCK_FLAG_PROCESSED );
+    block_map_entry->flags   = fd_uchar_clear_bit( block_map_entry->flags, FD_BLOCK_FLAG_REPLAYING );
+    ulong block_entry_height = block_map_entry->block_height;
+    memcpy( &block_map_entry->bank_hash, &fork->slot_ctx.slot_bank.banks_hash, sizeof( fd_hash_t ) );
+
+    fd_block_map_publish( query );
+
+    publish_slot_notifications( ctx, stem, fork, block_entry_height, curr_slot );
+
     fd_blockstore_start_write( ctx->blockstore );
-    fd_block_meta_t * block_map_entry = fd_blockstore_block_map_query( ctx->blockstore, curr_slot );
-
-    publish_slot_notifications( ctx, stem, fork, block_map_entry, curr_slot );
-
-    if( FD_LIKELY( block_ ) ) {
-      block_map_entry->flags = fd_uchar_set_bit( block_map_entry->flags, FD_BLOCK_FLAG_PROCESSED );
-      block_map_entry->flags = fd_uchar_clear_bit( block_map_entry->flags, FD_BLOCK_FLAG_REPLAYING );
-      ctx->blockstore->shmem->lps   = block_map_entry->slot;
-      memcpy( &block_map_entry->bank_hash, &fork->slot_ctx.slot_bank.banks_hash, sizeof( fd_hash_t ) );
-    }
+    ctx->blockstore->shmem->lps = curr_slot;
     fd_blockstore_end_write( ctx->blockstore );
 
     /**********************************************************************/
