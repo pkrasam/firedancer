@@ -1852,26 +1852,28 @@ after_frag( fd_replay_tile_ctx_t * ctx,
       /* FIXME. We need a more efficient way to compute the ancestor chain. */
       uchar msg[4098*8] __attribute__( ( aligned( 8U ) ) );
       fd_memset( msg, 0, sizeof(msg) );
-      fd_blockstore_start_read( ctx->blockstore );
       ulong s = reset_fork->slot_ctx.slot_bank.slot;
       *(ulong*)(msg + 16U) = s;
       ulong i = 0;
       do {
-        block_map_entry = fd_blockstore_block_map_query( ctx->blockstore, s );
-        if( block_map_entry == NULL ) {
+        //block_map_entry = fd_blockstore_block_map_query( ctx->blockstore, s );
+        if( !fd_blockstore_block_meta_test( ctx->blockstore, s ) ) {
           break;
         }
-        s = block_map_entry->parent_slot;
+        s = fd_blockstore_parent_slot_query( ctx->blockstore, s );
+        fd_blockstore_start_read( ctx->blockstore );
         if( s < ctx->blockstore->shmem->smr ) {
+          fd_blockstore_end_read( ctx->blockstore );
           break;
         }
+        fd_blockstore_end_read( ctx->blockstore );
+
         *(ulong*)(msg + 24U + i*8U) = s;
         if( ++i == 4095U ) {
           break;
         }
       } while( 1 );
       *(ulong*)(msg + 8U) = i;
-      fd_blockstore_end_read( ctx->blockstore );
       replay_plugin_publish( ctx, stem, FD_PLUGIN_MSG_SLOT_RESET, msg, sizeof(msg) );
     }
 

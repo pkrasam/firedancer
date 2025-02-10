@@ -1200,9 +1200,12 @@ fd_runtime_block_verify_ticks( fd_blockstore_t * blockstore,
     we cache the results of some checks but do not immediately return
     an error.
    */
-  fd_blockstore_start_read( blockstore );
-  fd_block_meta_t * query = fd_blockstore_block_map_query( blockstore, slot );
-  FD_TEST( query->slot_complete_idx != FD_SHRED_IDX_NULL );
+
+
+  fd_block_map_query_t quer[1] = {0};
+  fd_block_map_prepare( blockstore->block_map, &slot, NULL, quer, FD_MAP_FLAG_BLOCKING );
+  fd_block_meta_t * query = fd_block_map_query_ele( quer );
+  FD_TEST( query && query->slot_complete_idx != FD_SHRED_IDX_NULL );
 
   uint   batch_cnt = 0;
   ulong  batch_idx = 0;
@@ -1249,8 +1252,7 @@ fd_runtime_block_verify_ticks( fd_blockstore_t * blockstore,
       batch_idx = fd_block_set_const_iter_next( query->data_complete_idxs, batch_idx - 1 ) + 1;
     }
   }
-
-  fd_blockstore_end_read( blockstore );
+  fd_block_map_cancel( quer );
 
   ulong next_tick_height = tick_height + tick_count;
   if( FD_UNLIKELY( next_tick_height > max_tick_height ) ) {

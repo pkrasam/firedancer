@@ -1071,11 +1071,12 @@ fd_shredcap_populate_blockstore( const char *      capture_dir,
       }
 
       fd_shredcap_bank_hash_entry_t * entry = (fd_shredcap_bank_hash_entry_t*)bank_hash_buf;
-      fd_blockstore_start_read( blockstore );
-      fd_block_meta_t * block = fd_blockstore_block_map_query( blockstore, cur_slot );
-      fd_blockstore_end_read( blockstore );
-      if ( FD_LIKELY( block ) ) {
+      if ( FD_LIKELY( fd_blockstore_block_meta_test( blockstore, cur_slot ) ) ) {
+        fd_block_map_query_t query[1] = {0};
+        fd_block_map_prepare( blockstore->block_map, &cur_slot, NULL, query, FD_MAP_FLAG_BLOCKING );
+        fd_block_meta_t * block = fd_block_map_query_ele( query );
         fd_memcpy( block->bank_hash.hash, &entry->bank_hash.hash, 32UL );
+        fd_block_map_publish( query );
       }
 
       ++cur_bank_hash_slot_idx;

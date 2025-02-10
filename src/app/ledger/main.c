@@ -379,9 +379,7 @@ runtime_replay( fd_ledger_args_t * ledger_args ) {
     FD_LOG_DEBUG(( "reading slot %lu", slot ));
 
     /* If we have reached a new block, load one in from rocksdb to the blockstore */
-    fd_blockstore_start_read( blockstore );
     bool block_exists = fd_blockstore_shreds_complete( blockstore, slot);
-    fd_blockstore_end_read( blockstore );
     if( !block_exists && slot_meta.slot == slot ) {
       int err = fd_rocksdb_import_block_blockstore( &rocks_db,
                                                     &slot_meta, blockstore,
@@ -392,34 +390,37 @@ runtime_replay( fd_ledger_args_t * ledger_args ) {
         FD_LOG_ERR(( "Failed to import block %lu", start_slot ));
       }
 
-      fd_blockstore_start_write( blockstore );
-
       /* Remove the previous block from the blockstore */
       if( FD_LIKELY( block_slot < slot ) ) {
         /* Mark the block as successfully processed */
-        fd_block_meta_t * block_map_entry = fd_blockstore_block_map_query( blockstore, block_slot );
+
+        fd_block_map_query_t query[1] = {0};
+        fd_block_map_prepare( blockstore->block_map, &block_slot, NULL, query, FD_MAP_FLAG_BLOCKING );
+        fd_block_meta_t * block_map_entry = fd_block_map_query_ele( query );
+
         block_map_entry->flags = fd_uchar_clear_bit( block_map_entry->flags, FD_BLOCK_FLAG_REPLAYING );
         block_map_entry->flags = fd_uchar_set_bit( block_map_entry->flags, FD_BLOCK_FLAG_PROCESSED );
 
+        ulong slot_complete_idx = block_map_entry->slot_complete_idx;
+        fd_block_map_publish( query );
+
         /* Remove the old block from the blockstore */
-        for( uint idx = 0; idx <= block_map_entry->slot_complete_idx; idx++ ) {
+        for( uint idx = 0; idx <= slot_complete_idx; idx++ ) {
           fd_blockstore_shred_remove( blockstore, block_slot, idx );
         }
         fd_blockstore_slot_remove( blockstore, block_slot );
       }
-
       /* Mark the new block as replaying */
-      fd_block_meta_t * block_map_entry = fd_blockstore_block_map_query( blockstore, slot );
+      fd_block_map_query_t query[1] = {0};
+      fd_block_map_prepare( blockstore->block_map, &slot, NULL, query, FD_MAP_FLAG_BLOCKING );
+      fd_block_meta_t * block_map_entry = fd_block_map_query_ele( query );
       block_map_entry->flags = fd_uchar_set_bit( block_map_entry->flags, FD_BLOCK_FLAG_REPLAYING );
-
-      fd_blockstore_end_write( blockstore );
+      fd_block_map_publish( query );
 
       block_slot = slot;
     }
 
-    fd_blockstore_start_read( blockstore );
     fd_block_t * blk = fd_blockstore_block_query( blockstore, slot ); /* can't be removed atm, populating slot_ctx->block below */
-    fd_blockstore_end_read( blockstore );
     if( blk == NULL ) {
       FD_LOG_WARNING(( "failed to read slot %lu", slot ));
       continue;

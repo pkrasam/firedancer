@@ -189,7 +189,7 @@ fd_store_slot_prepare( fd_store_t *   store,
     goto end;
   }
 
-  /* See if the parent is executed yet */
+  /* Parent is complete - see if the parent is executed yet */
   if( FD_UNLIKELY( !fd_uchar_extract_bit( parent_flags, FD_BLOCK_FLAG_PROCESSED ) ) ) {
     rc = FD_STORE_SLOT_PREPARE_NEED_PARENT_EXEC;
     // FD_LOG_WARNING(("NEED PARENT EXEC %lu %lu", slot, parent_slot));
