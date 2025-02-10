@@ -231,6 +231,7 @@ struct fake_funk {
         uint p = 0;
         for (auto j : parent->_recs) {
           if( i->_key == j->_key ) {
+            delete j;
             parent->_recs.erase(parent->_recs.begin()+p);
             break;
           }
