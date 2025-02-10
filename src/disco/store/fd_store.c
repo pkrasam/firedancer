@@ -164,7 +164,7 @@ fd_store_slot_prepare( fd_store_t *   store,
    * repaired before we can replay it. */
   if( FD_UNLIKELY( !parent_block_map_entry ) ) {
     rc = FD_STORE_SLOT_PREPARE_NEED_ORPHAN;
-    *repair_slot_out = slot;
+    *repair_slot_out = slot; /* todo */
     re_add_delays[re_adds_cnt] = FD_REPAIR_BACKOFF_TIME;
     re_adds[re_adds_cnt++] = slot;
 

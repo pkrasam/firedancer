@@ -1511,7 +1511,7 @@ fd_blockstore_slice_query( fd_blockstore_t * blockstore,
     int invalid_idx = 0;
     while( err == FD_MAP_ERR_AGAIN ){
       fd_block_map_query_t quer[1] = { 0 };
-      int err = fd_block_map_query_try( blockstore->block_map, &slot, NULL, quer, 0 );
+      err = fd_block_map_query_try( blockstore->block_map, &slot, NULL, quer, 0 );
       fd_block_meta_t * query = fd_block_map_query_ele( quer );
       if( FD_UNLIKELY( err == FD_MAP_ERR_KEY ) ) return FD_BLOCKSTORE_ERR_SLOT_MISSING;
       if( FD_UNLIKELY( err == FD_MAP_ERR_AGAIN ) ) continue;
