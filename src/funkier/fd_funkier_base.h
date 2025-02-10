@@ -39,7 +39,8 @@
    - Critically, competing/parallel transaction histories are allowed.
 
    - A user can to read / write all funk records for the most recently
-     published transactions and all transactions locally in preparation. */
+     published transactions (if there are no transactions in
+     preparation) or all transactions in preparation with no children. */
 
 #include "../util/fd_util.h"
 #include "../util/valloc/fd_valloc.h"
@@ -140,7 +141,7 @@ FD_PROTOTYPES_BEGIN
 
 FD_FN_UNUSED FD_FN_PURE static ulong /* Workaround -Winline */
 fd_funkier_rec_key_hash( fd_funkier_rec_key_t const * k,
-                      ulong                     seed ) {
+                         ulong                     seed ) {
   return (fd_ulong_hash( seed ^ (1UL<<0) ^ k->ul[0] ) ^ fd_ulong_hash( seed ^ (1UL<<1) ^ k->ul[1] ) ) ^
          (fd_ulong_hash( seed ^ (1UL<<2) ^ k->ul[2] ) ^ fd_ulong_hash( seed ^ (1UL<<3) ^ k->ul[3] ) ) ^
          (fd_ulong_hash( seed ^ (1UL<<4) ^ k->ul[4] ) ); /* tons of ILP */
@@ -152,7 +153,7 @@ fd_funkier_rec_key_hash( fd_funkier_rec_key_t const * k,
 
 FD_FN_UNUSED FD_FN_PURE static int /* Workaround -Winline */
 fd_funkier_rec_key_eq( fd_funkier_rec_key_t const * ka,
-                    fd_funkier_rec_key_t const * kb ) {
+                       fd_funkier_rec_key_t const * kb ) {
   ulong const * a = ka->ul;
   ulong const * b = kb->ul;
   return !( ((a[0]^b[0]) | (a[1]^b[1])) | ((a[2]^b[2]) | (a[3]^b[3])) | (a[4]^b[4]) ) ;
@@ -164,7 +165,7 @@ fd_funkier_rec_key_eq( fd_funkier_rec_key_t const * ka,
 
 static inline fd_funkier_rec_key_t *
 fd_funkier_rec_key_copy( fd_funkier_rec_key_t *       kd,
-                      fd_funkier_rec_key_t const * ks ) {
+                         fd_funkier_rec_key_t const * ks ) {
   ulong *       d = kd->ul;
   ulong const * s = ks->ul;
   d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; d[3] = s[3]; d[4] = s[4];
@@ -180,7 +181,7 @@ fd_funkier_rec_key_copy( fd_funkier_rec_key_t *       kd,
 
 FD_FN_UNUSED FD_FN_PURE static ulong /* Work around -Winline */
 fd_funkier_txn_xid_hash( fd_funkier_txn_xid_t const * x,
-                      ulong                     seed ) {
+                         ulong                     seed ) {
   return ( fd_ulong_hash( seed ^ (1UL<<0) ^ x->ul[0] ) ^ fd_ulong_hash( seed ^ (1UL<<1) ^ x->ul[1] ) ); /* tons of ILP */
 }
 
@@ -190,7 +191,7 @@ fd_funkier_txn_xid_hash( fd_funkier_txn_xid_t const * x,
 
 FD_FN_PURE static inline int
 fd_funkier_txn_xid_eq( fd_funkier_txn_xid_t const * xa,
-                    fd_funkier_txn_xid_t const * xb ) {
+                       fd_funkier_txn_xid_t const * xb ) {
   ulong const * a = xa->ul;
   ulong const * b = xb->ul;
   return !( (a[0]^b[0]) | (a[1]^b[1]) );
@@ -202,7 +203,7 @@ fd_funkier_txn_xid_eq( fd_funkier_txn_xid_t const * xa,
 
 static inline fd_funkier_txn_xid_t *
 fd_funkier_txn_xid_copy( fd_funkier_txn_xid_t *       xd,
-                      fd_funkier_txn_xid_t const * xs ) {
+                         fd_funkier_txn_xid_t const * xs ) {
   ulong *       d = xd->ul;
   ulong const * s = xs->ul;
   d[0] = s[0]; d[1] = s[1];
@@ -235,7 +236,7 @@ fd_funkier_txn_xid_set_root( fd_funkier_txn_xid_t * x ) {
 
 FD_FN_PURE static inline ulong
 fd_funkier_xid_key_pair_hash( fd_funkier_xid_key_pair_t const * p,
-                           ulong                          seed ) {
+                              ulong                          seed ) {
   /* We ignore the xid part of the key because we need all the instances
      of a given record key to appear in the same hash
      chain. fd_funkier_rec_query_global depends on this. */
@@ -248,7 +249,7 @@ fd_funkier_xid_key_pair_hash( fd_funkier_xid_key_pair_t const * p,
 
 FD_FN_UNUSED FD_FN_PURE static int /* Work around -Winline */
 fd_funkier_xid_key_pair_eq( fd_funkier_xid_key_pair_t const * pa,
-                         fd_funkier_xid_key_pair_t const * pb ) {
+                            fd_funkier_xid_key_pair_t const * pb ) {
   return fd_funkier_txn_xid_eq( pa->xid, pb->xid ) & fd_funkier_rec_key_eq( pa->key, pb->key );
 }
 
@@ -258,7 +259,7 @@ fd_funkier_xid_key_pair_eq( fd_funkier_xid_key_pair_t const * pa,
 
 static inline fd_funkier_xid_key_pair_t *
 fd_funkier_xid_key_pair_copy( fd_funkier_xid_key_pair_t *       pd,
-                           fd_funkier_xid_key_pair_t const * ps ) {
+                              fd_funkier_xid_key_pair_t const * ps ) {
   fd_funkier_txn_xid_copy( pd->xid, ps->xid );
   fd_funkier_rec_key_copy( pd->key, ps->key );
   return pd;
@@ -271,8 +272,8 @@ fd_funkier_xid_key_pair_copy( fd_funkier_xid_key_pair_t *       pd,
 
 static inline fd_funkier_xid_key_pair_t *
 fd_funkier_xid_key_pair_init( fd_funkier_xid_key_pair_t *  p,
-                           fd_funkier_txn_xid_t const * x,
-                           fd_funkier_rec_key_t const * k ) {
+                              fd_funkier_txn_xid_t const * x,
+                              fd_funkier_rec_key_t const * k ) {
   fd_funkier_txn_xid_copy( p->xid, x );
   fd_funkier_rec_key_copy( p->key, k );
   return p;
