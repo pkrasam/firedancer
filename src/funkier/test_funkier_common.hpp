@@ -3,6 +3,7 @@ extern "C" {
 }
 #include <map>
 #include <vector>
+#include <set>
 #include <algorithm>
 #include <stdlib.h>
 #include <assert.h>
@@ -18,9 +19,17 @@ struct fake_rec {
     std::vector<long> _data;
     bool _erased = false;
     bool _touched = false;
+    static std::set<fake_rec*> _all;
 
     fake_rec() = delete;
-    fake_rec(ulong key) : _key(key) { }
+    fake_rec(ulong key) : _key(key) {
+      assert(_all.count(this) == 0);
+      _all.insert(this);
+    }
+    ~fake_rec() {
+      assert(_all.count(this) == 1);
+      _all.erase(this);
+    }
 
     static fake_rec * make_random() {
       auto * rec = new fake_rec(((ulong)lrand48())%MAX_CHILDREN);
@@ -47,6 +56,8 @@ struct fake_rec {
     }
 };
 
+std::set<fake_rec*> fake_rec::_all;
+
 struct fake_txn {
     ulong _key;
     std::vector<fake_rec*> _recs;
@@ -56,8 +67,9 @@ struct fake_txn {
 
     fake_txn(ulong key) : _key(key) { }
     ~fake_txn() {
-      for (auto i : _recs)
+      for (auto i : _recs) {
         delete i;
+      }
     }
 
     fd_funkier_txn_xid_t real_id() const {
@@ -114,6 +126,9 @@ struct fake_funk {
       fd_funkier_close_file( &close_args );
       unlink( "funk_test_file" );
 #endif
+      for( auto i : fake_rec::_all )
+        FD_LOG_NOTICE(( "leaked record 0x%lx!", (ulong)i ));
+
     }
 
 #ifdef TEST_FUNKIER_FILE
