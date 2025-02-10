@@ -69,8 +69,10 @@ struct fake_txn {
 
     bool insert(fake_rec* rec) {
       for (auto i : _recs)
-        if( i->_key == rec->_key )
+        if( i->_key == rec->_key ) {
+          delete rec;
           return false; /* Error */
+        }
       auto sz = _recs.size();
       _recs.resize(sz+1);
       _recs[sz] = rec;
@@ -144,9 +146,8 @@ struct fake_funk {
       if( txn->_recs.size() == MAX_CHILDREN ) return;
       fake_rec * rec = NULL;
       do {
-        if( rec ) delete rec;
-        /* Prevent duplicate keys */
         rec = fake_rec::make_random();
+        /* Prevent duplicate keys */
       } while (!txn->insert(rec));
 
       fd_funkier_txn_t * txn2 = get_real_txn(txn);
