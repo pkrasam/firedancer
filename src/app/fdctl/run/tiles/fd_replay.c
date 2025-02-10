@@ -601,9 +601,9 @@ typedef struct fd_status_check_ctx fd_status_check_ctx_t;
 
 static void
 blockstore_publish( fd_replay_tile_ctx_t * ctx, ulong wmk ) {
-  //fd_blockstore_start_write( ctx->blockstore );
+  fd_blockstore_start_write( ctx->blockstore );
   fd_blockstore_publish( ctx->blockstore, ctx->blockstore_fd, wmk );
-  //fd_blockstore_end_write( ctx->blockstore );
+  fd_blockstore_end_write( ctx->blockstore );
 }
 
 static void
@@ -1507,9 +1507,8 @@ process_and_exec_mbatch( fd_replay_tile_ctx_t * ctx,
   }
 
   err = fd_block_map_prepare( ctx->blockstore->block_map, &ctx->curr_slot, NULL, query, FD_MAP_FLAG_BLOCKING );
-  if( FD_UNLIKELY( err ) ) { FD_LOG_ERR(( "Failed to prepare block map entry, shouldn't be possible" )); }
   fd_block_meta_t * blk_entry = fd_block_map_query_ele( query );
-  if( FD_UNLIKELY( blk_entry->slot != ctx->curr_slot ) ) FD_LOG_ERR(( "Failed to prepare block map entry, shouldn't be possible" ));;
+  if( FD_UNLIKELY( err || blk_entry->slot != ctx->curr_slot ) ) FD_LOG_ERR(( "Failed to prepare block map entry, shouldn't be possible" ));
   blk_entry->in_poh_hash = *(fd_hash_t *)fd_type_pun( hdr->hash );
   fd_block_map_publish( query );
 
@@ -1628,7 +1627,7 @@ after_frag( fd_replay_tile_ctx_t * ctx,
       fd_block_meta_t * block_map_entry = fd_block_map_query_ele( query );
 
       if( FD_UNLIKELY( err == FD_MAP_ERR_AGAIN ) ) continue;
-      if( FD_UNLIKELY( err ) ) FD_LOG_ERR(( "Unable to query block map entry from blockstore" ));
+      if( FD_UNLIKELY( err == FD_MAP_ERR_KEY ) ) FD_LOG_ERR(( "Unable to query block map entry from blockstore" ));
 
       consumed_idx      = block_map_entry->consumed_idx;
       data_complete_idx = block_map_entry->data_complete_idx;
@@ -1781,11 +1780,8 @@ after_frag( fd_replay_tile_ctx_t * ctx,
       fd_tpool_wait( ctx->tpool, i+1 );
     }
 
-    fd_blockstore_start_read( ctx->blockstore );
     fd_block_t * block_ = fd_blockstore_block_query( ctx->blockstore, curr_slot );  /* can't be removed atm, used for txn metadata & blk rewards */
     fork->slot_ctx.block = block_;
-    /* upsetting :( )*/
-    fd_blockstore_end_read( ctx->blockstore );
 
     int res = fd_runtime_block_execute_finalize_tpool( &fork->slot_ctx, ctx->capture_ctx, block_info, ctx->tpool, ctx->runtime_spad );
     if( res != FD_RUNTIME_EXECUTE_SUCCESS ) {

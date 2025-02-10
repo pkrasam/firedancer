@@ -398,7 +398,7 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
     uchar * out_buf = fd_chunk_to_laddr( ctx->replay_out_mem, ctx->replay_out_chunk );
 
     if( !fd_blockstore_shreds_complete( ctx->blockstore, slot ) ) {
-      FD_LOG_ERR(( "Block does not exist." ));
+      FD_LOG_ERR(( "could not find block - slot: %lu", slot ));
     }
 
     fd_block_map_query_t query[1];
@@ -406,7 +406,7 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
     while( err == FD_MAP_ERR_AGAIN ) {
       err = fd_block_map_query_try( ctx->blockstore->block_map, &slot, NULL, query, 0 );
       fd_block_meta_t * meta = fd_block_map_query_ele( query );
-      if( FD_UNLIKELY( err == FD_MAP_ERR_KEY ) ) FD_LOG_ERR(( "Block does not exist." ));
+      if( FD_UNLIKELY( err == FD_MAP_ERR_KEY ) ) FD_LOG_ERR(( "could not find slot meta" ));
       if( FD_UNLIKELY( err == FD_MAP_ERR_AGAIN ) ) continue;
       FD_STORE( ulong, out_buf, meta->parent_slot );
       err = fd_block_map_query_test( query );
@@ -542,7 +542,7 @@ unprivileged_init( fd_topo_t *      topo,
                    strcmp( topo->links[ tile->out_link_id[ REPLAY_OUT_IDX ] ].name, "store_replay" ) ||
                    strcmp( topo->links[ tile->out_link_id[ REPAIR_OUT_IDX ] ].name, "store_repair" ) ) )
     FD_LOG_ERR(( "store tile has none or unexpected output links %lu %s",
-                 tile->out_cnt, topo->links[ tile->out_link_id[ 0 ] ].name ));;
+                 tile->out_cnt, topo->links[ tile->out_link_id[ 0 ] ].name ));
 
   /* Scratch mem setup */
 
@@ -719,6 +719,7 @@ unprivileged_init( fd_topo_t *      topo,
       fd_block_map_prepare( ctx->blockstore->block_map, &slot, NULL, query, FD_MAP_FLAG_BLOCKING );
       fd_block_meta_t * block_map_entry        = fd_block_map_query_ele( query );
                         block_map_entry->flags = 0;
+                        block_map_entry->slot  = slot;
       fd_block_map_publish( query );
       fd_store_add_pending( ctx->store, slot, (long)cnt++, 0, 0 );
     }

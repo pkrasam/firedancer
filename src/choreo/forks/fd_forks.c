@@ -419,6 +419,7 @@ fd_forks_update( fd_forks_t *      forks,
 
           FD_LOG_DEBUG(( "finalized %lu", smr ));
           fd_block_meta_t * ancestor = block_map_entry;
+          /* block_map_entry ptr is still valid because we haven't published yet. */
           while( ancestor ) {
             ancestor->flags = fd_uchar_set_bit( ancestor->flags, FD_BLOCK_FLAG_FINALIZED );
             ulong ancestor_slot = ancestor->parent_slot;
@@ -432,6 +433,7 @@ fd_forks_update( fd_forks_t *      forks,
           }
         }
       }
+      /* cancel the last prepare for non-existent ancestor*/
       fd_block_map_cancel( query );
     }
   }
