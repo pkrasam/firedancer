@@ -14,6 +14,12 @@ fd_blockstore_new( void * shmem,
                    ulong  block_max,
                    ulong  idx_max,
                    ulong  txn_max ) {
+
+  if( (block_max & (block_max - 1)) != 0 ){
+    block_max = (ulong) pow(2, ceil(log2( (double) block_max)));
+    // temporary fix to make sure block_max is a power of 2, as required
+    // for slot map para. We'll want to fix this in toml or err out earlier
+  }
   fd_blockstore_shmem_t * blockstore_shmem = (fd_blockstore_shmem_t *)shmem;
 
   if( FD_UNLIKELY( !blockstore_shmem ) ) {
