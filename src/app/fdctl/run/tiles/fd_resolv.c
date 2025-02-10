@@ -67,7 +67,7 @@ typedef struct {
   ulong map_next;
   ulong map_prev;
 
-  uchar * blockhash;
+  blockhash_t * blockhash;
   uchar _[ FD_TPU_PARSED_MTU ] __attribute__((aligned(alignof(fd_txn_m_t))));
 } fd_stashed_txn_m_t;
 
@@ -88,13 +88,13 @@ typedef struct {
 
 #define MAP_NAME          map_chain
 #define MAP_ELE_T         fd_stashed_txn_m_t
-#define MAP_KEY_T         uchar *
+#define MAP_KEY_T         blockhash_t *
 #define MAP_KEY           blockhash
 #define MAP_IDX_T         ulong
 #define MAP_NEXT          map_next
 #define MAP_PREV          map_prev
-#define MAP_KEY_HASH(k,s) ((s) ^ fd_ulong_load_8( (k) ))
-#define MAP_KEY_EQ(k0,k1) (!memcmp((*k0),(*k1), 32UL))
+#define MAP_KEY_HASH(k,s) ((s) ^ fd_ulong_load_8( (*(k))->b ))
+#define MAP_KEY_EQ(k0,k1) (!memcmp((*(k0))->b, (*(k1))->b, 32UL))
 #define MAP_OPTIMIZE_RANDOM_ACCESS_REMOVAL 1
 #define MAP_MULTI         1
 
@@ -230,9 +230,10 @@ publish_txn( fd_resolv_ctx_t *          ctx,
              fd_stem_context_t *        stem,
              fd_stashed_txn_m_t const * stashed ) {
   fd_txn_m_t *     txnm = (fd_txn_m_t *)fd_chunk_to_laddr( ctx->out_mem, ctx->out_chunk );
+  fd_memcpy( txnm, stashed->_, fd_txn_m_realized_footprint( (fd_txn_m_t *)stashed->_, 1, 0 ) );
+
   fd_txn_t const * txnt = fd_txn_m_txn_t( txnm );
 
-  fd_memcpy( txnm, stashed->_, fd_txn_m_realized_footprint( txnm, 1, 0 ) );
   txnm->reference_slot = ctx->flushing_slot;
 
   if( FD_UNLIKELY( txnt->addr_table_adtl_cnt ) ) {
@@ -333,7 +334,7 @@ after_frag( fd_resolv_ctx_t *   ctx,
         blockhash_map_t * blockhash = map_insert( ctx->blockhash_map, *(blockhash_t *)frag->hash );
         blockhash->slot = frag->slot;
 
-        uchar * hash = frag->hash;
+        blockhash_t * hash = (blockhash_t *)frag->hash;
         ctx->flush_pool_idx  = map_chain_idx_query( ctx->map_chain, &hash, ULONG_MAX, ctx->pool );
         ctx->flushing_slot   = frag->slot;
 
@@ -347,6 +348,8 @@ after_frag( fd_resolv_ctx_t *   ctx,
   }
 
   fd_txn_m_t *     txnm = (fd_txn_m_t *)fd_chunk_to_laddr( ctx->out_mem, ctx->out_chunk );
+  FD_TEST( txnm->payload_sz<=FD_TPU_MTU );
+  FD_TEST( txnm->txn_t_sz<=FD_TXN_MAX_SZ );
   fd_txn_t const * txnt = fd_txn_m_txn_t( txnm );
 
   /* If we find the recent blockhash, life is simple.  We drop
@@ -417,7 +420,7 @@ after_frag( fd_resolv_ctx_t *   ctx,
        pool_idx_acquire won't return POOL_IDX_NULL. */
     FD_COMPILER_FORGET( stash_txn );
     fd_memcpy( stash_txn->_, txnm, fd_txn_m_realized_footprint( txnm, 1, 0 ) );
-    stash_txn->blockhash = fd_txn_m_payload( (fd_txn_m_t *)(stash_txn->_) ) + txnt->recent_blockhash_off;
+    stash_txn->blockhash = (blockhash_t *)(fd_txn_m_payload( (fd_txn_m_t *)(stash_txn->_) ) + txnt->recent_blockhash_off);
     ctx->metrics.stash[ FD_METRICS_ENUM_RESOLVE_STASH_OPERATION_V_INSERTED_IDX ]++;
 
     map_chain_ele_insert( ctx->map_chain, stash_txn, ctx->pool );

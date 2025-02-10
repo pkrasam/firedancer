@@ -130,8 +130,7 @@ typedef struct {
       ulong  xdp_rx_queue_size;
       ulong  xdp_tx_queue_size;
       ulong  xdp_aio_depth;
-      long   tx_flush_timeout_ns;
-      char   xdp_mode[4];
+      char   xdp_mode[8];
       int    zero_copy;
       uint   src_ip_addr;
       uchar  src_mac_addr[6];
@@ -398,6 +397,8 @@ typedef struct fd_topo_t {
 
   ulong          agave_affinity_cnt;
   ulong          agave_affinity_cpu_idx[ FD_TILE_MAX ];
+
+  ulong          max_page_size; /* 2^21 or 2^30 */
 } fd_topo_t;
 
 typedef struct {

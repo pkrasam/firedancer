@@ -453,7 +453,7 @@ struct fd_pack_private {
 
   fd_pack_limits_t lim[1];
 
-  ulong      pending_txn_cnt;
+  ulong      pending_txn_cnt; /* Summed across all treaps */
   ulong      microblock_cnt; /* How many microblocks have we
                                 generated in this block? */
   ulong      data_bytes_consumed; /* How much data is in this block so
@@ -1574,11 +1574,16 @@ fd_pack_set_initializer_bundles_ready( fd_pack_t * pack ) {
 
 void
 fd_pack_metrics_write( fd_pack_t const * pack ) {
-  ulong pending_votes = treap_ele_cnt( pack->pending_votes );
-  FD_MGAUGE_SET( PACK, AVAILABLE_TRANSACTIONS,       pack->pending_txn_cnt                                                  );
-  FD_MGAUGE_SET( PACK, AVAILABLE_VOTE_TRANSACTIONS,  pending_votes                                                          );
-  FD_MGAUGE_SET( PACK, CONFLICTING_TRANSACTIONS,     pack->pending_txn_cnt - treap_ele_cnt( pack->pending ) - pending_votes );
-  FD_MGAUGE_SET( PACK, SMALLEST_PENDING_TRANSACTION, pack->pending_smallest->cus                                            );
+  ulong pending_regular = treap_ele_cnt( pack->pending        );
+  ulong pending_votes  = treap_ele_cnt( pack->pending_votes   );
+  ulong pending_bundle = treap_ele_cnt( pack->pending_bundles );
+  ulong conflicting    = pack->pending_txn_cnt - pending_votes - pending_bundle - treap_ele_cnt( pack->pending );
+  FD_MGAUGE_SET( PACK, AVAILABLE_TRANSACTIONS_ALL,         pack->pending_txn_cnt       );
+  FD_MGAUGE_SET( PACK, AVAILABLE_TRANSACTIONS_REGULAR,     pending_regular             );
+  FD_MGAUGE_SET( PACK, AVAILABLE_TRANSACTIONS_VOTES,       pending_votes               );
+  FD_MGAUGE_SET( PACK, AVAILABLE_TRANSACTIONS_CONFLICTING, conflicting                 );
+  FD_MGAUGE_SET( PACK, AVAILABLE_TRANSACTIONS_BUNDLES,     pending_bundle              );
+  FD_MGAUGE_SET( PACK, SMALLEST_PENDING_TRANSACTION,       pack->pending_smallest->cus );
 }
 
 typedef struct {
@@ -2336,12 +2341,18 @@ fd_pack_schedule_next_microblock( fd_pack_t *  pack,
                                   float        vote_fraction,
                                   ulong        bank_tile,
                                   fd_txn_p_t * out ) {
-  /* Try to schedule a bundle first */
-  int bundle_result = fd_pack_try_schedule_bundle( pack, bank_tile, out );
-  if( FD_UNLIKELY( bundle_result>0                         ) ) return (ulong)bundle_result;
-  if( FD_UNLIKELY( bundle_result==TRY_BUNDLE_HAS_CONFLICTS ) ) return 0UL;
-  /* in the NO_READY_BUNDLES or DOES_NOT_FIT case, we schedule like
-     normal. */
+  /* Because we schedule bundles strictly in order, we need to limit
+     bundles to a single bank.  Otherwise, if a bundle is executing on a
+     certain bank and the next bundle conflicts with it, all the other
+     bank tiles will be idle until the first bundle completes. */
+  if( FD_LIKELY( bank_tile==0UL ) ) {
+    /* Try to schedule a bundle first */
+    int bundle_result = fd_pack_try_schedule_bundle( pack, bank_tile, out );
+    if( FD_UNLIKELY( bundle_result>0                         ) ) return (ulong)bundle_result;
+    if( FD_UNLIKELY( bundle_result==TRY_BUNDLE_HAS_CONFLICTS ) ) return 0UL;
+    /* in the NO_READY_BUNDLES or DOES_NOT_FIT case, we schedule like
+       normal. */
+  }
 
   /* TODO: Decide if these are exactly how we want to handle limits */
   total_cus = fd_ulong_min( total_cus, pack->lim->max_cost_per_block - pack->cumulative_block_cost );
@@ -2396,9 +2407,8 @@ fd_pack_schedule_next_microblock( fd_pack_t *  pack,
   pack->data_bytes_consumed         += nonempty * MICROBLOCK_DATA_OVERHEAD;
 
   /* Update metrics counters */
-  FD_MGAUGE_SET( PACK, AVAILABLE_TRANSACTIONS,      pack->pending_txn_cnt                );
-  FD_MGAUGE_SET( PACK, AVAILABLE_VOTE_TRANSACTIONS, treap_ele_cnt( pack->pending_votes ) );
-  FD_MGAUGE_SET( PACK, CUS_CONSUMED_IN_BLOCK,       pack->cumulative_block_cost          );
+  fd_pack_metrics_write( pack );
+  FD_MGAUGE_SET( PACK, CUS_CONSUMED_IN_BLOCK,         pack->cumulative_block_cost          );
 
   fd_histf_sample( pack->txn_per_microblock,  scheduled              );
   fd_histf_sample( pack->vote_per_microblock, status1.txns_scheduled );
