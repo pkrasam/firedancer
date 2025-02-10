@@ -229,7 +229,6 @@ end:
 int
 fd_store_shred_insert( fd_store_t * store,
                        fd_shred_t const * shred ) {
-  //long timer_st = fd_log_wallclock();
   if( FD_UNLIKELY( shred->version != store->expected_shred_version ) ) {
     FD_LOG_WARNING(( "received shred version %lu instead of %lu", (ulong)shred->version, store->expected_shred_version ));
     return FD_BLOCKSTORE_SUCCESS;
@@ -264,7 +263,7 @@ fd_store_shred_insert( fd_store_t * store,
 
   /* FIXME */
   if( FD_UNLIKELY( fd_blockstore_shreds_complete( blockstore, shred->slot ) ) ) {
-    FD_LOG_NOTICE(( "slot %lu complete", shred->slot ));
+    FD_LOG_DEBUG(( "slot %lu complete", shred->slot ));
     fd_store_add_pending( store, shred->slot, (long)5e6, 0, 1 );
     return FD_BLOCKSTORE_SUCCESS_SLOT_COMPLETE;
   } else {
@@ -449,7 +448,6 @@ fd_store_slot_repair( fd_store_t * store,
         anc_flags = meta->flags;
         err = fd_block_map_query_test( query );
       }
-      //fd_block_meta_t * anc_block_map_entry = fd_blockstore_block_map_query( store->blockstore, anc_slot );
 
       if( anc_complete && fd_uchar_extract_bit( anc_flags, FD_BLOCK_FLAG_PROCESSED ) ) {
         good = 1;

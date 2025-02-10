@@ -1856,7 +1856,6 @@ after_frag( fd_replay_tile_ctx_t * ctx,
       *(ulong*)(msg + 16U) = s;
       ulong i = 0;
       do {
-        //block_map_entry = fd_blockstore_block_map_query( ctx->blockstore, s );
         if( !fd_blockstore_block_meta_test( ctx->blockstore, s ) ) {
           break;
         }
@@ -2526,7 +2525,6 @@ during_housekeeping( void * _ctx ) {
 
   fd_funk_txn_xid_t xid;
   fd_blockstore_block_hash_copy( ctx->blockstore, wmk, xid.uc, sizeof( fd_funk_txn_xid_t ) );
-  /* don't think this originally did err checking, but maybe we want it */
   xid.ul[0] = wmk;
 
   if( FD_LIKELY( ctx->blockstore ) ) blockstore_publish( ctx, wmk );

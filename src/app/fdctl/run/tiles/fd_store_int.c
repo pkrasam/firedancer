@@ -489,7 +489,7 @@ after_credit( fd_store_tile_ctx_t * ctx,
     int store_slot_prepare_mode = fd_store_slot_prepare( ctx->store, i, &repair_slot );
 
     ulong slot = repair_slot == 0 ? i : repair_slot;
-    //FD_LOG_INFO(( "store slot - mode: %d, slot: %lu, repair_slot: %lu", store_slot_prepare_mode, i, repair_slot ));
+    FD_LOG_DEBUG(( "store slot - mode: %d, slot: %lu, repair_slot: %lu", store_slot_prepare_mode, i, repair_slot ));
     fd_store_tile_slot_prepare( ctx, stem, store_slot_prepare_mode, slot );
 
     if( FD_UNLIKELY( ctx->in_wen_restart ) ) {
