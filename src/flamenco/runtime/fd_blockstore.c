@@ -478,7 +478,6 @@ fd_blockstore_fini( fd_blockstore_t * blockstore FD_PARAM_UNUSED ) {
 
   /* Free all allocations by removing all slots (whether they are
      complete or not). */
-  
   fd_block_meta_t * ele0 = (fd_block_meta_t *)fd_block_map_shele( blockstore->block_map );
   ulong block_max = fd_block_map_ele_max( blockstore->block_map );
   for( ulong ele_idx=0; ele_idx<block_max; ele_idx++ ) {
@@ -652,9 +651,9 @@ fd_blockstore_slot_remove( fd_blockstore_t * blockstore, ulong slot ) {
   while( err == FD_MAP_ERR_AGAIN ) {
     err = fd_block_map_query_try( blockstore->block_map, &slot, NULL, query, 0 );
     if( FD_UNLIKELY( err == FD_MAP_ERR_AGAIN ) ) continue;
-    if( FD_UNLIKELY( err ) ) return; /* slot not found */
+    if( FD_UNLIKELY( err == FD_MAP_ERR_KEY ) ) return; /* slot not found */
     fd_block_meta_t * block_map_entry = fd_block_map_query_ele( query );
-    if( FD_UNLIKELY( block_map_entry && fd_uchar_extract_bit( block_map_entry->flags, FD_BLOCK_FLAG_REPLAYING ) ) ) {
+    if( FD_UNLIKELY( fd_uchar_extract_bit( block_map_entry->flags, FD_BLOCK_FLAG_REPLAYING ) ) ) {
       FD_LOG_WARNING(( "[%s] slot %lu has replay in progress. not removing.", __func__, slot ));
       return;
     }
@@ -665,7 +664,7 @@ fd_blockstore_slot_remove( fd_blockstore_t * blockstore, ulong slot ) {
   }
 
   err = fd_block_map_remove( blockstore->block_map, &slot, query, FD_MAP_FLAG_BLOCKING );
-  if( FD_UNLIKELY( err ) ) return; /* remove unsuccessful. TODO: how should fail? */
+  /* not possible to fail */
   FD_TEST( !fd_blockstore_block_meta_test( blockstore, slot ) );
 
   /* Unlink slot from its parent only if it is not published. */
@@ -970,6 +969,8 @@ fd_blockstore_publish( fd_blockstore_t * blockstore, int fd, ulong wmk ) {
   while( !fd_slot_deque_empty( q ) ) {
     ulong slot = fd_slot_deque_pop_head( q );
     fd_block_map_query_t query[1];
+    /* Blocking read -- we need the block_meta ptr to be valid for the
+       whole time that we are writing stuff to the archiver file. */
     int err = fd_block_map_prepare( blockstore->block_map, &slot, NULL, query, FD_MAP_FLAG_BLOCKING );
     if( FD_UNLIKELY( err ) ) {
       FD_LOG_WARNING(( "[%s] failed to prepare block map for blockstore publishing %lu", __func__, slot ));
@@ -1053,14 +1054,12 @@ deshred( fd_blockstore_t * blockstore, ulong slot ) {
 
   int err = FD_MAP_ERR_AGAIN;
   fd_block_map_query_t query[1];
-  int loop_ct = 0;
   while( err == FD_MAP_ERR_AGAIN ) {
     err = fd_block_map_prepare( blockstore->block_map, &slot, NULL, query, 0 );
-    loop_ct++;
-    if( FD_UNLIKELY( loop_ct > 2 ) ){ FD_LOG_WARNING(("prepare is taking so long loop_ct: %d", loop_ct)); }
   }
   fd_block_meta_t * block_map_entry = fd_block_map_query_ele( query );
-  FD_TEST( block_map_entry->block_gaddr == 0 ); /* FIXME duplicate blocks are not supported */
+  FD_TEST( block_map_entry->block_gaddr == 0 && block_map_entry->slot == slot );
+  /* FIXME duplicate blocks are not supported */
 
   block_map_entry->ts = fd_log_wallclock();
   ulong shred_cnt = block_map_entry->slot_complete_idx + 1;
@@ -1115,8 +1114,6 @@ deshred( fd_blockstore_t * blockstore, ulong slot ) {
   block->batch_gaddr = fd_wksp_gaddr_fast( wksp, batch_laddr );
   block->batch_cnt    = batch_cnt;
 
-  long time = fd_log_wallclock();
-
   ulong off     = 0UL;
   ulong batch_i = 0UL;
   for( uint idx = 0; idx < shred_cnt; idx++ ) {
@@ -1154,13 +1151,8 @@ deshred( fd_blockstore_t * blockstore, ulong slot ) {
   if( FD_UNLIKELY( batch_cnt != batch_i ) ) {
     FD_LOG_ERR(( "batch_cnt(%lu)!=batch_i(%lu) potential memory corruption", batch_cnt, batch_i ));
   }
-  FD_LOG_INFO(("deshred TIME 4: %ld ms", (fd_log_wallclock() - time) / 1000 ));
-  time = fd_log_wallclock();
 
   fd_blockstore_scan_block( blockstore, slot, block );
-
-  FD_LOG_INFO(("deshred TIME 5 (scan_block): %ld ms", (fd_log_wallclock() - time) / 1000 ));
-  time = fd_log_wallclock();
 
   /* Do this last when it's safe */
   FD_COMPILER_MFENCE();
@@ -1182,7 +1174,7 @@ deshred( fd_blockstore_t * blockstore, ulong slot ) {
 
 void
 fd_blockstore_shred_insert( fd_blockstore_t * blockstore, fd_shred_t const * shred ) {
-  //FD_LOG_NOTICE(( "[%s] slot %lu idx %u", __func__, shred->slot, shred->idx ));
+  // FD_LOG_NOTICE(( "[%s] slot %lu idx %u", __func__, shred->slot, shred->idx ));
 
   ulong slot = shred->slot;
   fd_shred_key_t key = { slot, .idx = shred->idx };
@@ -1239,10 +1231,8 @@ fd_blockstore_shred_insert( fd_blockstore_t * blockstore, fd_shred_t const * shr
 
   /* Update shred's associated slot meta */
 
-  //fd_block_meta_t * block_map = fd_blockstore_block_map( blockstore );
-
-  if( FD_UNLIKELY( !fd_blockstore_block_meta_test( blockstore, slot ) ) ) { // TODO: check fishiness
-     fd_block_map_query_t query[1] = { 0 };
+  if( FD_UNLIKELY( !fd_blockstore_block_meta_test( blockstore, slot ) ) ) {
+    fd_block_map_query_t query[1] = { 0 };
     /* Prepare will succeed regardless of if the key is in the map or not. It either returns
        the element at that idx, or it will return a spot to insert new stuff. So we need to check
        if that space is actually unused, to signify that we are adding a new entry. */
@@ -1255,7 +1245,6 @@ fd_blockstore_shred_insert( fd_blockstore_t * blockstore, fd_shred_t const * shr
     if( FD_UNLIKELY( err == FD_MAP_ERR_FULL )){
       FD_LOG_ERR(( "[%s] OOM: failed to insert new block map entry. blockstore needs to save metadata for all slots >= SMR, so increase memory or check for issues with publishing new SMRs.", __func__ ));
     }
-    if ( FD_UNLIKELY( err == FD_MAP_ERR_AGAIN ) ) FD_LOG_ERR(( "[%s] this shouldnt be possible: slot %lu", __func__, slot ));
 
     /* Initialize the block_map_entry. Note some fields are initialized
        to dummy values because we do not have all the necessary metadata
@@ -1290,10 +1279,7 @@ fd_blockstore_shred_insert( fd_blockstore_t * blockstore, fd_shred_t const * shr
 
     fd_block_map_publish( query );
 
-    if( !fd_blockstore_block_meta_test( blockstore, slot ) ){
-      //FD_TEST( fd_block_map_verify( blockstore->block_map ) == FD_MAP_SUCCESS );
-      FD_LOG_ERR(( "failed to insert slot %lu into block map", slot ));
-    }
+    FD_TEST( fd_blockstore_block_meta_test( blockstore, slot ) );
   }
   fd_block_map_query_t query[1] = { 0 };
   err = fd_block_map_prepare( blockstore->block_map, &slot, NULL, query, FD_MAP_FLAG_BLOCKING );
@@ -1903,7 +1889,7 @@ fd_blockstore_txn_query_volatile( fd_blockstore_t * blockstore,
     ulong sz = blk->data_sz;
     if( txn_out->offset + txn_out->sz > sz || txn_out->sz > FD_TXN_MTU ) continue;
 
-    if( FD_UNLIKELY( fd_block_map_query_test( quer ) ) ) continue; // TODO: double check on double test
+    if( FD_UNLIKELY( fd_block_map_query_test( quer ) ) ) continue;
 
     if( txn_data_out == NULL ) return FD_BLOCKSTORE_SUCCESS;
     uchar const * data = fd_wksp_laddr_fast( wksp, ptr );
