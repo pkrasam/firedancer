@@ -188,7 +188,7 @@ struct fake_funk {
 
       fd_funkier_txn_t * txn2 = get_real_txn(txn);
       auto key = rec->real_id();
-      assert(fd_funkier_rec_remove(_real, txn2, &key, 0UL) == FD_FUNKIER_SUCCESS);
+      assert(fd_funkier_rec_remove(_real, txn2, &key, NULL, 0UL) == FD_FUNKIER_SUCCESS);
 
       rec->_erased = true;
       rec->_data.clear();

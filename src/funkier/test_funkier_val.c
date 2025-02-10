@@ -168,7 +168,7 @@ main( int     argc,
       rec_remove( ref, rrec );
 
       fd_funkier_txn_t * ttxn = rxid ? fd_funkier_txn_query( xid_set( txid, rxid ), &txn_map ) : NULL;
-      FD_TEST( !fd_funkier_rec_remove( tst, ttxn, key_set( tkey, rkey ), 0UL ) );
+      FD_TEST( !fd_funkier_rec_remove( tst, ttxn, key_set( tkey, rkey ), NULL, 0UL ) );
 
     } else if( op>=2 ) { /* Prepare 8x as publish and cancel combined */
 

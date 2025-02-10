@@ -111,14 +111,14 @@ main( int     argc,
       else                       FD_TEST( trec && xid_eq( fd_funkier_rec_xid( trec ), rrec->txn ? rrec->txn->xid : 0UL ) );
 
 #ifdef FD_FUNKIER_HANDHOLDING
-      FD_TEST( fd_funkier_rec_remove( NULL, NULL, NULL, 0UL )==FD_FUNKIER_ERR_INVAL );
-      FD_TEST( fd_funkier_rec_remove( NULL, NULL, tkey, 0UL )==FD_FUNKIER_ERR_INVAL );
-      FD_TEST( fd_funkier_rec_remove( tst, NULL, NULL, 0UL )==FD_FUNKIER_ERR_INVAL );
+      FD_TEST( fd_funkier_rec_remove( NULL, NULL, NULL, NULL, 0UL )==FD_FUNKIER_ERR_INVAL );
+      FD_TEST( fd_funkier_rec_remove( NULL, NULL, tkey, NULL, 0UL )==FD_FUNKIER_ERR_INVAL );
+      FD_TEST( fd_funkier_rec_remove( tst, NULL, NULL, NULL, 0UL )==FD_FUNKIER_ERR_INVAL );
 #endif
 
       if( trec ) {
         if( is_frozen ) {
-          FD_TEST( fd_funkier_rec_remove( tst, NULL, tkey, 0UL )==FD_FUNKIER_ERR_FROZEN );
+          FD_TEST( fd_funkier_rec_remove( tst, NULL, tkey, NULL, 0UL )==FD_FUNKIER_ERR_FROZEN );
         }
       }
 
@@ -199,13 +199,13 @@ main( int     argc,
       }
 
 #ifdef FD_FUNKIER_HANDHOLDING
-      FD_TEST( fd_funkier_rec_remove( NULL, ttxn, NULL, 0UL )==FD_FUNKIER_ERR_INVAL );
-      FD_TEST( fd_funkier_rec_remove( NULL, ttxn, tkey, 0UL )==FD_FUNKIER_ERR_INVAL );
-      FD_TEST( fd_funkier_rec_remove( tst, ttxn, NULL, 0UL )==FD_FUNKIER_ERR_INVAL );
+      FD_TEST( fd_funkier_rec_remove( NULL, ttxn, NULL, NULL, 0UL )==FD_FUNKIER_ERR_INVAL );
+      FD_TEST( fd_funkier_rec_remove( NULL, ttxn, tkey, NULL, 0UL )==FD_FUNKIER_ERR_INVAL );
+      FD_TEST( fd_funkier_rec_remove( tst, ttxn, NULL, NULL, 0UL )==FD_FUNKIER_ERR_INVAL );
 #endif
 
       if( trec && ttxn_is_frozen ) {
-        FD_TEST( fd_funkier_rec_remove( tst, ttxn, tkey, 0UL )==FD_FUNKIER_ERR_FROZEN );
+        FD_TEST( fd_funkier_rec_remove( tst, ttxn, tkey, NULL, 0UL )==FD_FUNKIER_ERR_FROZEN );
       }
 
       fd_funkier_rec_prepare_t rec_prepare[1];
@@ -338,7 +338,9 @@ main( int     argc,
       fd_funkier_rec_t const * trec = fd_funkier_rec_query_try( tst, ttxn, key_set( tkey, rkey ), query );
       FD_TEST( trec );
 
-      FD_TEST( !fd_funkier_rec_remove( tst, ttxn, key_set( tkey, rkey ), 0UL ) );
+      fd_funkier_rec_t * trec2;
+      FD_TEST( !fd_funkier_rec_remove( tst, ttxn, key_set( tkey, rkey ), &trec2, 0UL ) );
+      FD_TEST( trec == trec2 );
 
     } else if( op>=2 ) { /* Prepare 8x as publish and cancel combined */
 

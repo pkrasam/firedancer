@@ -166,7 +166,6 @@ fd_funkier_rec_prepare( fd_funkier_t *               funk,
   fd_wksp_t * wksp = fd_funkier_wksp( funk );
   prepare->rec_map = fd_funkier_rec_map( funk, wksp );
   prepare->rec_pool = fd_funkier_rec_pool( funk, wksp );
-  prepare->txn_pool = fd_funkier_txn_pool( funk, wksp );
   fd_funkier_rec_t * rec = prepare->rec = fd_funkier_rec_pool_acquire( &prepare->rec_pool, NULL, 1, opt_err );
   if( rec != NULL ) {
     if( txn == NULL ) {
@@ -176,7 +175,8 @@ fd_funkier_rec_prepare( fd_funkier_t *               funk,
       prepare->rec_tail_idx = &funk->rec_tail_idx;
     } else {
       fd_funkier_txn_xid_copy( rec->pair.xid, &txn->xid );
-      rec->txn_cidx = fd_funkier_txn_cidx( (ulong)( txn - prepare->txn_pool.ele ) );
+      fd_funkier_txn_pool_t txn_pool = fd_funkier_txn_pool( funk, wksp );
+      rec->txn_cidx = fd_funkier_txn_cidx( (ulong)( txn - txn_pool.ele ) );
       prepare->rec_head_idx = &txn->rec_head_idx;
       prepare->rec_tail_idx = &txn->rec_tail_idx;
     }
@@ -232,6 +232,7 @@ int
 fd_funkier_rec_remove( fd_funkier_t *               funk,
                        fd_funkier_txn_t *           txn,
                        fd_funkier_rec_key_t const * key,
+                       fd_funkier_rec_t **          rec_out,
                        ulong                        erase_data ) {
 #ifdef FD_FUNKIER_HANDHOLDING
   if( FD_UNLIKELY( funk==NULL || key==NULL ) ) {
@@ -271,6 +272,7 @@ fd_funkier_rec_remove( fd_funkier_t *               funk,
   }
 
   fd_funkier_rec_t * rec = fd_funkier_rec_map_query_ele( query );
+  if( rec_out ) *rec_out = rec;
   if( FD_UNLIKELY( rec->flags & FD_FUNKIER_REC_FLAG_ERASE ) ) return FD_FUNKIER_SUCCESS;
 
   /* Flush the value and leave a tombstone behind. In theory, this can

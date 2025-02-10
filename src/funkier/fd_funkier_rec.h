@@ -2,7 +2,17 @@
 #define HEADER_fd_src_funk_fd_funkier_rec_h
 
 /* This provides APIs for managing funk records.  It is generally not
-   meant to be included directly.  Use fd_funk.h instead. */
+   meant to be included directly.  Use fd_funk.h instead. The
+   following APIs are thread safe and can be interleaved arbirarily
+   across threads:
+     fd_funkier_rec_query_try
+     fd_funkier_rec_query_test
+     fd_funkier_rec_query_try_global
+     fd_funkier_rec_prepare
+     fd_funkier_rec_publish
+     fd_funkier_rec_cancel
+     fd_funkier_rec_remove
+*/
 
 #include "fd_funkier_txn.h" /* Includes fd_funkier_base.h */
 
@@ -29,10 +39,6 @@
 
 #define FD_FUNKIER_REC_IDX_NULL (ULONG_MAX)
 
-/* FD_FUNKIER_PART_NULL is the partition number of records that are not
-   in a partition */
-#define FD_FUNKIER_PART_NULL (UINT_MAX)
-
 /* A fd_funkier_rec_t describes a funk record. */
 
 struct __attribute__((aligned(FD_FUNKIER_REC_ALIGN))) fd_funkier_rec {
@@ -46,8 +52,8 @@ struct __attribute__((aligned(FD_FUNKIER_REC_ALIGN))) fd_funkier_rec {
   /* These fields are managed by funk.  TODO: Consider using record
      index compression here (much more debatable than in txn itself). */
 
-  ulong prev_idx;  /* Record map index of previous record */
-  ulong next_idx;  /* Record map index of next record */
+  ulong prev_idx;  /* Record map index of previous record in its transaction */
+  ulong next_idx;  /* Record map index of next record in its transaction */
   uint  txn_cidx;  /* Compressed transaction map index (or compressed FD_FUNKIER_TXN_IDX if this is in the last published) */
   uint  tag;       /* Internal use only */
   ulong flags;     /* Flags that indicate how to interpret a record */
@@ -59,7 +65,9 @@ struct __attribute__((aligned(FD_FUNKIER_REC_ALIGN))) fd_funkier_rec {
   uint  val_max;   /* Max byte  in record value, in [0,FD_FUNKIER_REC_VAL_MAX], 0 if erase flag set or val_gaddr is 0 */
   ulong val_gaddr; /* Wksp gaddr on record value if any, 0 if erase flag set or val_max is 0
                       If non-zero, the region [val_gaddr,val_gaddr+val_max) will be a current fd_alloc allocation (such that it is
-                      has tag wksp_tag) and the owner of the region will be the record.  IMPORTANT! HAS NO GUARANTEED ALIGNMENT! */
+                      has tag wksp_tag) and the owner of the region will be the record. The allocator is
+                      fd_funkier_alloc(). IMPORTANT! HAS NO GUARANTEED ALIGNMENT! */
+
 
   /* Padding to FD_FUNKIER_REC_ALIGN here */
 };
@@ -98,10 +106,13 @@ FD_STATIC_ASSERT( sizeof(fd_funkier_rec_t) == 4U*32U, record size is wrong );
 
 typedef fd_funkier_rec_map_query_t fd_funkier_rec_query_t;
 
+/* fd_funkier_rec_prepare_t represents a new record that has been
+   prepared but not inserted into the map yet. See documentation for
+   fd_funkier_rec_prepare. */
+
 struct _fd_funkier_rec_prepare {
   fd_funkier_rec_map_t rec_map;
   fd_funkier_rec_pool_t rec_pool;
-  fd_funkier_txn_pool_t txn_pool;
   fd_funkier_rec_t * rec;
   ulong * rec_head_idx;
   ulong * rec_tail_idx;
@@ -118,7 +129,7 @@ FD_FN_CONST static inline int fd_funkier_rec_idx_is_null( ulong idx ) { return i
 
 /* Accessors */
 
-/* fd_funkier_rec_query queries the in-preparation transaction pointed to
+/* fd_funkier_rec_query_try queries the in-preparation transaction pointed to
    by txn for the record whose key matches the key pointed to by key.
    If txn is NULL, the query will be done for the funk's last published
    transaction.  Returns a pointer to current record on success and NULL
@@ -134,8 +145,9 @@ FD_FN_CONST static inline int fd_funkier_rec_idx_is_null( ulong idx ) { return i
    space, key points to a record key in the caller's address space (NULL
    returns NULL), and no concurrent operations on funk, txn or key.
    funk retains no interest in key.  The funk retains ownership of any
-   returned record.  The record value metadata will be updated whenever
-   the record value modified.
+   returned record.
+
+   The query argument remembers the query for later validity testing.
 
    This is reasonably fast O(1).
 
@@ -150,9 +162,21 @@ fd_funkier_rec_query_try( fd_funkier_t *               funk,
                           fd_funkier_rec_key_t const * key,
                           fd_funkier_rec_query_t *     query );
 
+/* fd_funkier_rec_query_test returns SUCCESS if a prior query still has a
+   valid result. The coding pattern is:
+
+     for(;;) {
+       fd_funkier_rec_query_t query[1];
+       fd_funkier_rec_t * rec = fd_funkier_rec_query_try( funk, txn, key, query );
+       ... Optimistically read record value ...
+       if( fd_funkier_rec_query_test( query ) == FD_FUNKIER_SUCCESS ) break;
+       ... Clean up and try again ...
+     }
+*/
+
 int fd_funkier_rec_query_test( fd_funkier_rec_query_t * query );
 
-/* fd_funkier_rec_query_global is the same as fd_funkier_rec_query but will
+/* fd_funkier_rec_query_try_global is the same as fd_funkier_rec_query_try but will
    query txn's ancestors for key from youngest to oldest if key is not
    part of txn.  As such, the txn of the returned record may not match
    txn but will be the txn of most recent ancestor with the key
@@ -163,9 +187,9 @@ int fd_funkier_rec_query_test( fd_funkier_rec_query_t * query );
 
    Important safety tip!  This function can encounter records
    that have the ERASE flag set (i.e. are tombstones of erased
-   records). fd_funkier_rec_query_global will return a NULL in this case
+   records). fd_funkier_rec_query_try_global will return a NULL in this case
    but still set *txn_out to the relevant transaction. This behavior
-   differs from fd_funkier_rec_query. */
+   differs from fd_funkier_rec_query_try. */
 fd_funkier_rec_t const *
 fd_funkier_rec_query_try_global( fd_funkier_t *               funk,
                                  fd_funkier_txn_t const *     txn,
@@ -184,10 +208,11 @@ FD_FN_CONST static inline fd_funkier_xid_key_pair_t const * fd_funkier_rec_pair(
 FD_FN_CONST static inline fd_funkier_txn_xid_t const *      fd_funkier_rec_xid ( fd_funkier_rec_t const * rec ) { return rec->pair.xid; }
 FD_FN_CONST static inline fd_funkier_rec_key_t const *      fd_funkier_rec_key ( fd_funkier_rec_t const * rec ) { return rec->pair.key; }
 
-/* Insert a record. insert_prepare just allocates
- * and initializes a record. The application should then fill in the
- * value. insert_publish actually does the insert,
- * provided the chain has not changed in the meantime. */
+/* fd_funkier_rec_prepare prepares to insert a new record. This call just
+   allocates a record from the pool and initializes it.
+   The application should then fill in the new
+   value. fd_funkier_rec_publish actually does the map insert and
+   should be called once the value is correct. */
 
 fd_funkier_rec_t *
 fd_funkier_rec_prepare( fd_funkier_t *               funk,
@@ -196,21 +221,29 @@ fd_funkier_rec_prepare( fd_funkier_t *               funk,
                         fd_funkier_rec_prepare_t *   prepare,
                         int *                        opt_err );
 
+/* fd_funkier_rec_publish inserts a prepared record into the record map. */
+
 void
 fd_funkier_rec_publish( fd_funkier_rec_prepare_t * prepare );
+
+/* fd_funkier_rec_cancel returns a prepared record to the pool without
+   inserting it. */
 
 void
 fd_funkier_rec_cancel( fd_funkier_rec_prepare_t * prepare );
 
+/* fd_funkier_rec_is_full returns true if no more records can be
+   allocated. */
+
 int
 fd_funkier_rec_is_full( fd_funkier_t * funk );
 
-/* fd_funkier_rec_remove removes the live record pointed to by rec from
-   the funk.  Returns FD_FUNKIER_SUCCESS (0) on success and a FD_FUNKIER_ERR_*
-   (negative) on failure.  Reasons for failure include:
+/* fd_funkier_rec_remove removes the live record with the
+   given (xid,key) from funk. Returns FD_FUNKIER_SUCCESS (0) on
+   success and a FD_FUNKIER_ERR_* (negative) on failure.  Reasons for
+   failure include:
 
-     FD_FUNKIER_ERR_INVAL - bad inputs (NULL funk, NULL rec, rec is
-       obviously not from funk, etc)
+     FD_FUNKIER_ERR_INVAL - bad inputs (NULL funk, NULL xid)
 
      FD_FUNKIER_ERR_KEY - the record did not appear to be a live record.
        Specifically, a record query of funk for rec's (xid,key) pair did
@@ -225,27 +258,19 @@ fd_funkier_rec_is_full( fd_funkier_t * funk );
 
    Any information in an erased record is lost.
 
-   Assumes funk is a current local join (NULL returns ERR_INVAL) and rec
-   points to a record in the caller's address space (NULL returns
-   ERR_INVAL).  As the funk still has ownership of rec before and after
-   the call if live, the user doesn't need to, for example, match
-   inserts with removes.
-
-   This is a reasonably fast O(1) and fortified against memory corruption.
-
-   IMPORTANT SAFETY TIP!  DO NOT CAST AWAY CONST FROM A FD_FUNKIER_REC_T TO
-   USE THIS FUNCTION (E.G. PASS A RESULT DIRECTLY FROM QUERY).  USE A
-   LIVE RESULT FROM FD_FUNKIER_REC_MODIFY! */
+   This is a reasonably fast O(1) and fortified against memory
+   corruption. */
 
 int
 fd_funkier_rec_remove( fd_funkier_t *               funk,
                        fd_funkier_txn_t *           txn,
                        fd_funkier_rec_key_t const * key,
+                       fd_funkier_rec_t **          rec_out,
                        ulong                        erase_data );
 
 
 /* When a record is erased there is metadata stored in the five most
-   significant bytes of a record.  These are helpers to make setting
+   significant bytes of record flags.  These are helpers to make setting
    and getting these values simple. The caller is responsible for doing
    a check on the flag of the record before using the value of the erase
    data. The 5 least significant bytes of the erase data parameter will
@@ -268,12 +293,20 @@ fd_funkier_rec_get_erase_data( fd_funkier_rec_t const * rec );
        Specifically, a record query of funk for rec's (xid,key) pair did
        not return rec. Also, the record was never published.
 */
+
 int
 fd_funkier_rec_forget( fd_funkier_t *      funk,
                        fd_funkier_rec_t ** recs,
                        ulong recs_cnt );
 
-/* Iterator which walks all records in all transactions */
+/* Iterator which walks all records in all transactions. Usage is:
+
+  fd_funkier_all_iter_t iter[1];
+  for( fd_funkier_all_iter_new( funk, iter ); !fd_funkier_all_iter_done( iter ); fd_funkier_all_iter_next( iter ) ) {
+    fd_funkier_rec_t const * rec = fd_funkier_all_iter_ele_const( iter );
+    ...
+  }
+*/
 
 struct fd_funkier_all_iter {
   fd_funkier_rec_map_t rec_map;
