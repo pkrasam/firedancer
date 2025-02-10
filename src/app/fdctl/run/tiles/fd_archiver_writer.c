@@ -42,9 +42,11 @@ struct fd_archiver_writer_tile_ctx {
   long last_packet_ticks;
 
   int     archive_file_fd;
-  uchar * mmap_addr;
+  char *  mmap_addr;
   ulong   mmap_size;
   ulong   mmap_off;
+
+  char *  mmap_unsynced;
 };
 typedef struct fd_archiver_writer_tile_ctx fd_archiver_writer_tile_ctx_t;
 
@@ -160,6 +162,7 @@ unprivileged_init( fd_topo_t *      topo,
   if( madvise( ctx->mmap_addr, ctx->mmap_size, MADV_SEQUENTIAL ) ) {
     FD_LOG_WARNING(( "madvise(MADV_SEQUENTIAL) failed (%i-%s)", errno, strerror(errno) ));
   }
+  ctx->mmap_unsynced = ctx->mmap_addr;
 
   /* Input links */
   for( ulong i=0; i<tile->in_cnt; i++ ) {
@@ -181,11 +184,27 @@ now( fd_archiver_writer_tile_ctx_t * ctx ) {
 }
 
 static void
+mmap_sync( fd_archiver_writer_tile_ctx_t * ctx ) {
+  ulong sync_len = FD_SHMEM_HUGE_PAGE_SZ;
+  
+  if( sync_len < FD_SHMEM_HUGE_PAGE_SZ ) {
+    return;
+  }
+
+  if( msync(
+    ctx->mmap_unsynced,
+    sync_len,
+    MS_SYNC ) != 0 ) {
+    FD_LOG_ERR(( "msync failed. errno=%i sync_len=%lu", errno, sync_len ));
+  }
+
+  ctx->mmap_unsynced = ctx->mmap_unsynced + sync_len;
+}
+
+static void
 during_housekeeping( fd_archiver_writer_tile_ctx_t * ctx ) {
   (void)ctx;
-  if( msync( ctx->mmap_addr, ctx->mmap_size, MS_ASYNC ) != 0 ) {
-    FD_LOG_WARNING(( "msync failed. errno=%i", errno ));
-  }
+  mmap_sync( ctx );
 
   FD_LOG_WARNING(( "writer stats: net_shred_in_cnt=%lu net_quic_in_cnt=%lu net_gossip_in_cnt=%lu net_repair_in_cnt=%lu",
     ctx->stats.net_shred_in_cnt,
@@ -198,6 +217,8 @@ during_housekeeping( fd_archiver_writer_tile_ctx_t * ctx ) {
 static void
 resize_mmap( fd_archiver_writer_tile_ctx_t * ctx ) {
   ulong new_size = ctx->mmap_size << 1;
+
+  mmap_sync( ctx ); 
 
   /* ftruncate to new_size */
   if( FD_UNLIKELY( ftruncate( ctx->archive_file_fd, (off_t)new_size ) ) ) {
@@ -217,8 +238,9 @@ resize_mmap( fd_archiver_writer_tile_ctx_t * ctx ) {
     FD_LOG_WARNING(( "madvise(MADV_SEQUENTIAL) after mremap failed (%i-%s)", errno, strerror(errno) ));
   }
 
-  ctx->mmap_addr = (uchar *)new_map;
+  ctx->mmap_addr = (char *)new_map;
   ctx->mmap_size = new_size;
+  ctx->mmap_unsynced = ctx->mmap_addr;
 }
 
 static inline void
@@ -239,7 +261,7 @@ during_frag( fd_archiver_writer_tile_ctx_t * ctx,
 
   /* Write the incoming fragment to the ostream */
   /* This is safe to do inside during_frag because this tile is a reliable consumer and so can never be overran. */
-  uchar * src = (uchar *)fd_chunk_to_laddr( ctx->in[in_idx].mem, chunk );
+  char * src = (char *)fd_chunk_to_laddr( ctx->in[in_idx].mem, chunk );
 
   /* Update the timestamp of the fragment, so that we have a total ordering */
   fd_archiver_frag_header_t * header = fd_type_pun( src );
@@ -259,7 +281,7 @@ during_frag( fd_archiver_writer_tile_ctx_t * ctx,
   }
 
   /* Copy fragment into the mapped region */
-  uchar * dst = ctx->mmap_addr + ctx->mmap_off;
+  char * dst = ctx->mmap_addr + ctx->mmap_off;
   memcpy( dst, src, sz );
   ctx->mmap_off += sz;
 

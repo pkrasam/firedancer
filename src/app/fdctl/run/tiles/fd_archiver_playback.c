@@ -17,6 +17,8 @@
 #define NET_GOSSIP_OUT_IDX (2UL)
 #define NET_REPAIR_OUT_IDX (3UL)
 
+#define FD_ARCHIVER_STARTUP_DELAY_SECONDS (1)
+
 struct fd_archiver_playback_stats {
   ulong net_shred_out_cnt;
   ulong net_quic_out_cnt;
@@ -42,6 +44,8 @@ struct fd_archiver_playback_tile_ctx {
   long tick_per_ms;
 
   long next_publish_tick;
+
+  long startup_delay_tickcount;
 
   ulong pending_publish_link_idx;
   fd_archiver_frag_header_t pending_publish_header;
@@ -161,6 +165,8 @@ unprivileged_init( fd_topo_t *      topo,
     }
   }
 
+  ctx->startup_delay_tickcount = (long)(fd_tempo_tick_per_ns( NULL ) * (1000000000. * FD_ARCHIVER_STARTUP_DELAY_SECONDS));
+
   /* Setup output links */
   for( ulong i=0; i<tile->out_cnt; i++ ) {
     fd_topo_link_t * link      = &topo->links[ tile->out_link_id[ i ] ];
@@ -179,7 +185,8 @@ should_delay_publish( fd_archiver_playback_tile_ctx_t * ctx ) {
     return 0;
   }
 
-  return now( ctx ) < ctx->next_publish_tick;
+  long now_ticks = now( ctx );
+  return now_ticks < ctx->next_publish_tick || now_ticks < ctx->startup_delay_tickcount;
 }
 
 static inline void
