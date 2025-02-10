@@ -466,7 +466,7 @@ repair_get_parent( ulong  slot,
     fd_block_map_query_t query[1] = { 0 };
     err = fd_block_map_query_try( blockstore->block_map, &slot, NULL, query, 0 );
     fd_block_meta_t * meta = fd_block_map_query_ele( query );
-    if( FD_UNLIKELY( err == FD_MAP_ERR_KEY ) ) return -1UL;
+    if( FD_UNLIKELY( err == FD_MAP_ERR_KEY ) ) return FD_SLOT_NULL;
     if( FD_UNLIKELY( err == FD_MAP_ERR_AGAIN ) ) continue;
     res = meta->parent_slot;
     err = fd_block_map_query_test( query );

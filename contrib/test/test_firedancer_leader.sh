@@ -6,7 +6,7 @@ IFS=$'\n\t'
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 FD_DIR="$SCRIPT_DIR/../.."
 OBJDIR=${OBJDIR:-build/native/${CC}}
-AGAVE_PATH=${AGAVE_PATH:='/data/emwang/agave/release'}
+AGAVE_PATH=${AGAVE_PATH:='./agave/target/release'}
 
 cd ../test-ledger/
 
