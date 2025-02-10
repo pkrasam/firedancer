@@ -355,8 +355,10 @@ fd_forks_update( fd_forks_t *      forks,
 
       fd_ghost_node_t const * node = fd_ghost_query( ghost, vote );
 
-      fd_blockstore_start_write( blockstore );
-      fd_block_meta_t * block_map_entry = fd_blockstore_block_map_query( blockstore, vote );
+
+      fd_block_map_query_t query[1] = { 0 };
+      fd_block_map_prepare( blockstore->block_map, &vote, NULL, query, FD_MAP_FLAG_BLOCKING );
+      fd_block_meta_t * block_map_entry = fd_block_map_query_ele( query );
 
       int eqvocsafe = fd_uchar_extract_bit( block_map_entry->flags, FD_BLOCK_FLAG_EQVOCSAFE );
       if( FD_UNLIKELY( !eqvocsafe ) ) {
@@ -364,7 +366,6 @@ fd_forks_update( fd_forks_t *      forks,
         if( FD_UNLIKELY( pct > FD_EQVOCSAFE_PCT ) ) {
           FD_LOG_DEBUG(( "eqvocsafe %lu", block_map_entry->slot ));
           block_map_entry->flags = fd_uchar_set_bit( block_map_entry->flags, FD_BLOCK_FLAG_EQVOCSAFE );
-          blockstore->shmem->hcs = fd_ulong_max( blockstore->shmem->hcs, block_map_entry->slot );
         }
       }
 
@@ -374,10 +375,17 @@ fd_forks_update( fd_forks_t *      forks,
         if( FD_UNLIKELY( pct > FD_CONFIRMED_PCT ) ) {
           FD_LOG_DEBUG(( "confirmed %lu", block_map_entry->slot ));
           block_map_entry->flags = fd_uchar_set_bit( block_map_entry->flags, FD_BLOCK_FLAG_CONFIRMED );
+        }
+      }
+      fd_block_map_publish( query );
+
+      fd_blockstore_start_write( blockstore );
+      if( FD_UNLIKELY( !eqvocsafe || !confirmed ) ) {
+        double pct = (double)node->replay_stake / (double)epoch->total_stake;
+        if( FD_UNLIKELY( pct > FD_EQVOCSAFE_PCT ) ) {
           blockstore->shmem->hcs = fd_ulong_max( blockstore->shmem->hcs, block_map_entry->slot );
         }
       }
-
       fd_blockstore_end_write( blockstore );
     }
 

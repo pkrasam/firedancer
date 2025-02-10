@@ -677,10 +677,7 @@ fd_buf_shred_query_copy_data( fd_blockstore_t * blockstore,
 /* fd_blockstore_block_query queries blockstore for block at slot.
    Returns a pointer to the block or NULL if not in blockstore.  The
    returned pointer lifetime is until the block is removed.  Check
-   return value for error info.
-
-   IMPORTANT!  Caller MUST hold the read lock when calling this
-   function. */
+   return value for error info. */
 fd_block_t *
 fd_blockstore_block_query( fd_blockstore_t * blockstore, ulong slot );
 
