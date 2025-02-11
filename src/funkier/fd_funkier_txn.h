@@ -101,12 +101,7 @@ fd_funkier_txn_xid_t fd_funkier_generate_xid(void);
    return is non-NULL, the lifetime of the returned pointer is the
    lesser of the funk join or the transaction is published or canceled
    (either directly or indirectly via publish of a descendant, publish
-   of a competing transaction history or cancel of an ancestor).
-
-   Callers wanting more control over queries (e.g. concurrent queries,
-   sentinel transactions on failure, queries that don't optimize for
-   future queries by the same xid, etc) should use fd_funkier_txn_map_query
-   or fd_funkier_txn_map_query_const as appropriate. */
+   of a competing transaction history or cancel of an ancestor). */
 
 FD_FN_PURE static inline fd_funkier_txn_t *
 fd_funkier_txn_query( fd_funkier_txn_xid_t const * xid,
@@ -131,11 +126,7 @@ FD_FN_CONST static inline fd_funkier_txn_xid_t const * fd_funkier_txn_xid( fd_fu
 /* fd_funkier_txn_{parent,child_head,child_tail,sibling_prev,sibling_next}
    return a pointer in the caller's address space to the corresponding
    relative in-preparation transaction of in-preparation transaction
-   txn.  Assumes map == fd_funkier_txn_map( funk, fd_funkier_wksp( funk ) ),
-   funk is a current local join and txn points to an in-preparation funk
-   transaction in the caller's address space.  The returned pointer
-   lifetime and address space is as described in fd_funkier_txn_query.
-   These are not fortified against map data corruption.
+   txn.
 
    Specifically:
 
@@ -196,14 +187,14 @@ fd_funkier_txn_is_only_child( fd_funkier_txn_t const * txn ) {
 
 typedef struct fd_funkier_rec fd_funkier_rec_t;
 
-/* Return the first record in a transaction. Returns NULL if the
+/* Return the first (oldest) record in a transaction. Returns NULL if the
    transaction has no records yet. */
 
 FD_FN_PURE fd_funkier_rec_t const *
 fd_funkier_txn_first_rec( fd_funkier_t *           funk,
                           fd_funkier_txn_t const * txn );
 
-/* Return the last record in a transaction. Returns NULL if the
+/* Return the last (newest) record in a transaction. Returns NULL if the
    transaction has no records yet. */
 
 FD_FN_PURE fd_funkier_rec_t const *
@@ -259,12 +250,7 @@ fd_funkier_txn_prev_rec( fd_funkier_t *           funk,
        fd_funkier_publish( funk, fd_funkier_txn_descendant( funk, map ) );
 
    would publish as much currently uncontested transaction history as
-   possible around txn.
-
-   Assumes map == fd_funkier_txn_map( funk, fd_funkier_wksp( funk ) ), funk is
-   a current local join and txn points to an in-preparation transaction
-   of funk in the caller's address space.  The lifetime of the returned
-   pointer is as described in fd_funkier_txn_query. */
+   possible around txn. */
 
 FD_FN_PURE static inline fd_funkier_txn_t *
 fd_funkier_txn_ancestor( fd_funkier_txn_t * txn,
@@ -316,10 +302,10 @@ fd_funkier_txn_descendant( fd_funkier_txn_t * txn,
    lifetime of the returned pointer is as described in
    fd_funkier_txn_query.
 
-   At start of preparation, the records in the txn are a clone of the
+   At start of preparation, the records in the txn are a virtual clone of the
    records in its parent transaction.  The funk records can be modified
    when the funk has no children.  Similarly, the records of an
-   in-preparation transaction can be freely modified when the funk has
+   in-preparation transaction can be freely modified when it has
    no children.
 
    Assumes funk is a current local join.  Reasons for failure include
@@ -337,9 +323,12 @@ fd_funkier_txn_descendant( fd_funkier_txn_t * txn,
 
 fd_funkier_txn_t *
 fd_funkier_txn_prepare( fd_funkier_t *               funk,
-                     fd_funkier_txn_t *           parent,
-                     fd_funkier_txn_xid_t const * xid,
-                     int                       verbose );
+                        fd_funkier_txn_t *           parent,
+                        fd_funkier_txn_xid_t const * xid,
+                        int                          verbose );
+
+/* fd_funkier_txn_is_full returns true if the transaction map is
+   full. No more in-preparation transactions are allowed. */
 
 int
 fd_funkier_txn_is_full( fd_funkier_t * funk );
@@ -376,44 +365,30 @@ fd_funkier_txn_is_full( fd_funkier_t * funk );
 
 ulong
 fd_funkier_txn_cancel( fd_funkier_t *     funk,
-                    fd_funkier_txn_t * txn,
-                    int             verbose );
+                       fd_funkier_txn_t * txn,
+                       int                verbose );
 
 ulong
 fd_funkier_txn_cancel_siblings( fd_funkier_t *     funk,
-                             fd_funkier_txn_t * txn,
-                             int             verbose );
+                                fd_funkier_txn_t * txn,
+                                int                verbose );
 
 ulong
 fd_funkier_txn_cancel_children( fd_funkier_t *     funk,
-                             fd_funkier_txn_t * txn,
-                             int             verbose );
+                                fd_funkier_txn_t * txn,
+                                int                verbose );
+
+/* fd_funkier_txn_cancel_all cancels all in-preparation
+   transactions. Only the last published transaction remains. */
 
 ulong
 fd_funkier_txn_cancel_all( fd_funkier_t *     funk,
-                        int             verbose );
+                           int                verbose );
 
 /* fd_funkier_txn_publish publishes in-preparation transaction txn and any
    of txn's in-preparation ancestors.  Returns the number of
    transactions published.  Any competing histories to this chain will
    be cancelled.
-
-   This follows a principle of least information loss.  Specifically,
-   publications proceed incrementally from the oldest ancestor to txn
-   inclusive.  When a transaction is published, the transaction is first
-   committed to permanent storage.  If this is unsuccessful, the publish
-   is stopped at this transaction and the transaction remains
-   unpublished.  Otherwise, the transaction's siblings and their
-   descendants are cancelled.
-
-   As such, it is possible in a funk implementation (e.g. permanent
-   storage I/O errors) for fd_funkier_txn_publish to only publish some of
-   the ancestors.  Partial publication will only happen on error.  On
-   such a failure, no information is lost about the transaction that
-   failed to publish, its siblings or its descendants.  Likewise, all
-   the failed transaction's ancestors were reliably published.  Funk
-   last publish, query, the various traversals and so forth can be used
-   to diagnose the details about such situations.
 
    Assumes funk is a current local join.  Reasons for failure include
    NULL funk, txn does not point to an in-preparation funk transaction.
@@ -429,8 +404,8 @@ fd_funkier_txn_cancel_all( fd_funkier_t *     funk,
 
 ulong
 fd_funkier_txn_publish( fd_funkier_t *     funk,
-                     fd_funkier_txn_t * txn,
-                     int             verbose );
+                        fd_funkier_txn_t * txn,
+                        int                verbose );
 
 /* This version of publish just combines the transaction with its
    immediate parent. Ancestors will remain unpublished. Any competing
@@ -440,9 +415,16 @@ fd_funkier_txn_publish( fd_funkier_t *     funk,
 int
 fd_funkier_txn_publish_into_parent( fd_funkier_t *     funk,
                                     fd_funkier_txn_t * txn,
-                                    int             verbose );
+                                    int                verbose );
 
-/* Iterator which walks all transactions */
+/* Iterator which walks all in-preparation transactions. Usage is:
+
+     fd_funkier_txn_all_iter_t txn_iter[1];
+     for( fd_funkier_txn_all_iter_new( funk, txn_iter ); !fd_funkier_txn_all_iter_done( txn_iter ); fd_funkier_txn_all_iter_next( txn_iter ) ) {
+       fd_funkier_txn_t const * txn = fd_funkier_txn_all_iter_ele_const( txn_iter );
+       ...
+     }
+*/
 
 struct fd_funkier_txn_all_iter {
   fd_funkier_txn_map_t txn_map;
@@ -463,17 +445,23 @@ fd_funkier_txn_t const * fd_funkier_txn_all_iter_ele_const( fd_funkier_txn_all_i
 
 /* Misc */
 
+#ifdef FD_FUNKIER_HANDHOLDING
+
 /* fd_funkier_txn_verify verifies a transaction map.  Returns
    FD_FUNKIER_SUCCESS if the transaction map appears intact and
    FD_FUNKIER_ERR_INVAL if not (logs details).  Meant to be called as part
-   of fd_funkier_verify.  As such, it assumes funk is non-NULL and
-   fd_funkier_{wksp,txn_map} have already been verified to work. */
+   of fd_funkier_verify. */
 
 int
 fd_funkier_txn_verify( fd_funkier_t * funk );
 
+/* fd_funkier_txn_valid returns true if txn appears to be a pointer to
+   a valid in-prep transaction. */
+
 int
 fd_funkier_txn_valid( fd_funkier_t * funk, fd_funkier_txn_t const * txn );
+
+#endif
 
 FD_PROTOTYPES_END
 

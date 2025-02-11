@@ -132,10 +132,17 @@
    general rule, transaction level operations
    (e.g. fd_funkier_txn_cancel and fd_funkier_txn_publish) have to be
    single-threaded. In this case, no other access is allowed at the
-   same time. Purely record level operations (e.g. fd_funkier_rec_query,
-   fd_funkier_rec_prepare, fd_funkier_rec_cancel,
-   fd_funkier_rec_remove) are thread safe and can be arbitrarily
-   interleaved accross multiple cpus. */
+   same time. Purely record level operations are thread safe and can
+   be arbitrarily interleaved across multiple cpus. Specifically,
+   these are:
+     fd_funkier_rec_query_try
+     fd_funkier_rec_query_test
+     fd_funkier_rec_query_try_global
+     fd_funkier_rec_prepare
+     fd_funkier_rec_publish
+     fd_funkier_rec_cancel
+     fd_funkier_rec_remove
+*/
 
 //#include "fd_funkier_base.h" /* Includes ../util/fd_util.h */
 //#include "fd_funkier_txn.h"  /* Includes fd_funkier_base.h */
