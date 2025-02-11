@@ -354,7 +354,7 @@ typedef struct fd_block_meta fd_block_meta_t;
 #include "../../util/tmpl/fd_map_slot_para.c"
 
 #define BLOCK_META_LOCK_CNT  128UL
-#define BLOCK_META_PROBE_CNT 8UL
+#define BLOCK_META_PROBE_CNT 16UL
 
 /* fd_block_idx is an in-memory index of finalized blocks that have been
    archived to disk.  It records the slot together with the byte offset
@@ -489,6 +489,12 @@ fd_blockstore_align( void ) {
 
 FD_FN_CONST static inline ulong
 fd_blockstore_footprint( ulong shred_max, ulong block_max, ulong idx_max, ulong txn_max ) {
+   if( (block_max & (block_max - 1)) != 0 ){ /* TODO -- when removing, make change in fd_blockstore_new as well*/
+    block_max = (ulong) pow(2, ceil(log2( (double) block_max)));
+    // temporary fix to make sure block_max is a power of 2, as required
+    // for slot map para. We'll want to fix this in toml or err out earlier
+  }
+
   int lg_idx_max = fd_ulong_find_msb( fd_ulong_pow2_up( idx_max ) );
   return FD_LAYOUT_FINI(
     FD_LAYOUT_APPEND(
