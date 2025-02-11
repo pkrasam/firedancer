@@ -1636,6 +1636,8 @@ after_frag( fd_replay_tile_ctx_t * ctx,
 
       err = fd_block_map_query_test( query );
     }
+    long time = fd_log_wallclock();
+
 
     if( FD_LIKELY( data_complete_idx != FD_SHRED_IDX_NULL ) ) {
       uint i = consumed_idx + 1;
@@ -1692,6 +1694,8 @@ after_frag( fd_replay_tile_ctx_t * ctx,
     if( FD_UNLIKELY( blk_entry->slot != ctx->curr_slot ) ) FD_LOG_ERR(( "Failed to prepare block map entry, shouldn't be possible" ));;
     blk_entry->consumed_idx = consumed_idx;
     fd_block_map_publish( query );
+    FD_LOG_NOTICE(("microblock batch processed - slot: %lu in %ld ms", ctx->curr_slot, (fd_log_wallclock() - time) / 1000000 ));
+
   }
 
   /**********************************************************************/

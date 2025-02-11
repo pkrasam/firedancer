@@ -112,21 +112,11 @@ fd_store_slot_prepare( fd_store_t *   store,
       block_map_entry = 0;
       flags = 0;
       break;
-    } else {
-      block_map_entry = 1;
-      flags = blk->flags;
-      parent_slot = blk->parent_slot;
     }
+    block_map_entry = 1;
+    flags = blk->flags;
+    parent_slot = blk->parent_slot;
     err = fd_block_map_query_test( query );
-  }
-
-  if( FD_UNLIKELY( !block_map_entry ) ) {
-    /* I know nothing about this block yet */
-    rc = FD_STORE_SLOT_PREPARE_NEED_REPAIR;
-    *repair_slot_out = slot;
-    re_add_delays[re_adds_cnt] = FD_REPAIR_BACKOFF_TIME;
-    re_adds[re_adds_cnt++] = slot;
-    goto end;
   }
 
   /* We already executed this block */
@@ -140,6 +130,15 @@ fd_store_slot_prepare( fd_store_t *   store,
     goto end;
   }
 
+  if( FD_UNLIKELY( !block_map_entry ) ) {
+    /* I know nothing about this block yet */
+    rc = FD_STORE_SLOT_PREPARE_NEED_REPAIR;
+    *repair_slot_out = slot;
+    re_add_delays[re_adds_cnt] = FD_REPAIR_BACKOFF_TIME;
+    re_adds[re_adds_cnt++] = slot;
+    goto end;
+  }
+  
    /* Parent slot block map data */
 
   int   parent_block_map_entry = 0;
@@ -164,7 +163,7 @@ fd_store_slot_prepare( fd_store_t *   store,
    * repaired before we can replay it. */
   if( FD_UNLIKELY( !parent_block_map_entry ) ) {
     rc = FD_STORE_SLOT_PREPARE_NEED_ORPHAN;
-    *repair_slot_out = slot; /* todo */
+    *repair_slot_out = slot;
     re_add_delays[re_adds_cnt] = FD_REPAIR_BACKOFF_TIME;
     re_adds[re_adds_cnt++] = slot;
 
@@ -189,7 +188,7 @@ fd_store_slot_prepare( fd_store_t *   store,
     goto end;
   }
 
-  /* Parent is complete - see if the parent is executed yet */
+  /* See if the parent is executed yet */
   if( FD_UNLIKELY( !fd_uchar_extract_bit( parent_flags, FD_BLOCK_FLAG_PROCESSED ) ) ) {
     rc = FD_STORE_SLOT_PREPARE_NEED_PARENT_EXEC;
     // FD_LOG_WARNING(("NEED PARENT EXEC %lu %lu", slot, parent_slot));
@@ -214,9 +213,10 @@ fd_store_slot_prepare( fd_store_t *   store,
 
   /* Prepare the replay_slot struct. */
   /* Mark the block as prepared, and thus unsafe to remove. */
-  fd_block_map_prepare( store->blockstore->block_map, &slot, NULL, query, FD_MAP_FLAG_BLOCKING );
+  err = fd_block_map_prepare( store->blockstore->block_map, &slot, NULL, query, FD_MAP_FLAG_BLOCKING );
   fd_block_meta_t * meta = fd_block_map_query_ele( query );
-  meta->flags = fd_uchar_set_bit( flags, FD_BLOCK_FLAG_REPLAYING );
+  if(FD_UNLIKELY( err || meta->slot != slot )) FD_LOG_ERR(( "block map prepare failed" ));
+  meta->flags = fd_uchar_set_bit( meta->flags, FD_BLOCK_FLAG_REPLAYING );
   fd_block_map_publish( query );
 
 end:
@@ -236,13 +236,10 @@ fd_store_shred_insert( fd_store_t * store,
 
   fd_blockstore_t * blockstore = store->blockstore;
 
-  fd_blockstore_start_read( blockstore );
+/* needs start read end read*/
   if (shred->slot < blockstore->shmem->smr) {
-    fd_blockstore_end_read( blockstore );
     return FD_BLOCKSTORE_SUCCESS;
   }
-  fd_blockstore_end_read( blockstore );
-
   uchar shred_type = fd_shred_type( shred->variant );
   if( shred_type != FD_SHRED_TYPE_LEGACY_DATA
       && shred_type != FD_SHRED_TYPE_MERKLE_DATA
@@ -263,7 +260,6 @@ fd_store_shred_insert( fd_store_t * store,
 
   /* FIXME */
   if( FD_UNLIKELY( fd_blockstore_shreds_complete( blockstore, shred->slot ) ) ) {
-    FD_LOG_DEBUG(( "slot %lu complete", shred->slot ));
     fd_store_add_pending( store, shred->slot, (long)5e6, 0, 1 );
     return FD_BLOCKSTORE_SUCCESS_SLOT_COMPLETE;
   } else {
@@ -387,7 +383,13 @@ fd_store_slot_repair( fd_store_t * store,
   uint received_idx   = 0;
   uint buffered_idx   = 0;
   int err = FD_MAP_ERR_AGAIN;
+  int loop_cnt = 0;
   while( err == FD_MAP_ERR_AGAIN ){
+    loop_cnt++;
+    if( loop_cnt > 2 ) {
+      FD_LOG_WARNING(( "loop_cnt %d", loop_cnt ));
+    }
+
     fd_block_map_query_t query[1] = { 0 };
     err = fd_block_map_query_try( store->blockstore->block_map, &slot, NULL, query, 0 );
     fd_block_meta_t * meta = fd_block_map_query_ele( query );
@@ -395,12 +397,12 @@ fd_store_slot_repair( fd_store_t * store,
     if( err == FD_MAP_ERR_KEY ) {
       block_map_entry = 0;
       break;
-    } else {
-      block_map_entry = 1;
-      complete_idx = meta->slot_complete_idx;
-      received_idx = meta->received_idx;
-      buffered_idx = meta->buffered_idx;
     }
+    block_map_entry = 1;
+    complete_idx = meta->slot_complete_idx;
+    received_idx = meta->received_idx;
+    buffered_idx = meta->buffered_idx;
+
     err = fd_block_map_query_test( query );
   }
 
@@ -435,7 +437,7 @@ fd_store_slot_repair( fd_store_t * store,
     for( uint i = 0; i < 6; ++i ) {
       anc_slot  = fd_blockstore_parent_slot_query( store->blockstore, anc_slot );
       int anc_complete = fd_blockstore_shreds_complete( store->blockstore, anc_slot );
-
+      if( !anc_complete ) continue;
       /* get ancestor flags */
       uchar anc_flags = 0;
       int err = FD_MAP_ERR_AGAIN;
@@ -449,7 +451,7 @@ fd_store_slot_repair( fd_store_t * store,
         err = fd_block_map_query_test( query );
       }
 
-      if( anc_complete && fd_uchar_extract_bit( anc_flags, FD_BLOCK_FLAG_PROCESSED ) ) {
+      if( fd_uchar_extract_bit( anc_flags, FD_BLOCK_FLAG_PROCESSED ) ) {
         good = 1;
         out_repair_reqs_sz /= (i>>1)+1U; /* Slow roll blocks that are further out */
         break;

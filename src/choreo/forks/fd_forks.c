@@ -383,7 +383,7 @@ fd_forks_update( fd_forks_t *      forks,
       if( FD_UNLIKELY( !eqvocsafe || !confirmed ) ) {
         double pct = (double)node->replay_stake / (double)epoch->total_stake;
         if( FD_UNLIKELY( pct > FD_EQVOCSAFE_PCT ) ) {
-          blockstore->shmem->hcs = fd_ulong_max( blockstore->shmem->hcs, block_map_entry->slot );
+          blockstore->shmem->hcs = fd_ulong_max( blockstore->shmem->hcs, vote );
         }
       }
       fd_blockstore_end_write( blockstore );
@@ -443,6 +443,7 @@ fd_forks_update( fd_forks_t *      forks,
       }
       /* cancel the last prepare for non-existent ancestor*/
       fd_block_map_cancel( query );
+      // lets do a verify check here
     }
   }
 }
