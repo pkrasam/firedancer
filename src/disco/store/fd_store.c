@@ -138,8 +138,8 @@ fd_store_slot_prepare( fd_store_t *   store,
     re_adds[re_adds_cnt++] = slot;
     goto end;
   }
-  
-   /* Parent slot block map data */
+
+  /* Parent slot block map data */
 
   int   parent_block_map_entry = 0;
   uchar parent_flags           = 0;
