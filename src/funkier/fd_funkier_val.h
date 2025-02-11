@@ -41,7 +41,7 @@ fd_funkier_val_max( fd_funkier_rec_t const * rec ) { /* Assumes pointer in calle
 
 FD_FN_PURE static inline void *             /* Lifetime is the lesser of rec or the value size is modified */
 fd_funkier_val( fd_funkier_rec_t const * rec,     /* Assumes pointer in caller's address space to a live funk record */
-             fd_wksp_t const *     wksp ) { /* ==fd_funkier_wksp( funk ) where funk is a current local join */
+                fd_wksp_t const *        wksp ) { /* ==fd_funkier_wksp( funk ) where funk is a current local join */
   ulong val_gaddr = rec->val_gaddr;
   if( !val_gaddr ) return NULL; /* Covers the marked ERASE case too */ /* TODO: consider branchless */
   return fd_wksp_laddr_fast( wksp, val_gaddr );
@@ -49,20 +49,19 @@ fd_funkier_val( fd_funkier_rec_t const * rec,     /* Assumes pointer in caller's
 
 FD_FN_PURE static inline void const *             /* Lifetime is the lesser of rec or the value size is modified */
 fd_funkier_val_const( fd_funkier_rec_t const * rec,     /* Assumes pointer in caller's address space to a live funk record */
-                   fd_wksp_t const *     wksp ) { /* ==fd_funkier_wksp( funk ) where funk is a current local join */
+                      fd_wksp_t const *        wksp ) { /* ==fd_funkier_wksp( funk ) where funk is a current local join */
   ulong val_gaddr = rec->val_gaddr;
   if( !val_gaddr ) return NULL; /* Covers the marked ERASE case too */ /* TODO: consider branchless */
   return fd_wksp_laddr_fast( wksp, val_gaddr );
 }
 
-/* fd_funkier_val_truncate resizes a record to be new_val_sz bytes in size.
+/* fd_funkier_val_truncate resizes a record to be new_val_sz bytes in
+   size.
 
    This function is optimized for the user knowing the actual long term
-   record size when they call this.  So avoid using this to
-   incrementally increase a size of a value by a constant amount over
-   time.  See append above for that.
+   record size when they call this.
 
-   Likewise, regardless of the current and new value sizes, this will
+   Regardless of the current and new value sizes, this will
    always attempt to resize the record in order to minimize the amount
    of excess allocation used by the record.  So this function should be
    assumed to kill any existing pointers into this record's value
@@ -80,10 +79,10 @@ fd_funkier_val_const( fd_funkier_rec_t const * rec,     /* Assumes pointer in ca
 
 void *                                               /* Returns record value on success, NULL on failure */
 fd_funkier_val_truncate( fd_funkier_rec_t * rec,     /* Assumed in caller's address space to a live funk record (NULL returns NULL) */
-                         ulong           new_val_sz, /* Should be in [0,FD_FUNKIER_REC_VAL_MAX] (returns NULL otherwise) */
-                         fd_alloc_t *    alloc,      /* ==fd_funkier_alloc( funk, wksp ) */
-                         fd_wksp_t *     wksp,       /* ==fd_funkier_wksp( funk ) where funk is current local join */
-                         int *           opt_err );  /* If non-NULL, *opt_err returns operation error code */
+                         ulong              new_val_sz, /* Should be in [0,FD_FUNKIER_REC_VAL_MAX] (returns NULL otherwise) */
+                         fd_alloc_t *       alloc,      /* ==fd_funkier_alloc( funk, wksp ) */
+                         fd_wksp_t *        wksp,       /* ==fd_funkier_wksp( funk ) where funk is current local join */
+                         int *              opt_err );  /* If non-NULL, *opt_err returns operation error code */
 
 /* Misc */
 
@@ -105,13 +104,14 @@ static inline fd_funkier_rec_t *                  /* Returns rec */
 fd_funkier_val_flush( fd_funkier_rec_t * rec,     /* Assumed live funk record in caller's address space */
                       fd_alloc_t *       alloc,   /* ==fd_funkier_alloc( funk, wksp ) */
                       fd_wksp_t *        wksp ) { /* ==fd_funkier_wksp( funk ) where funk is a current local join */
-  ulong val_gaddr   = rec->val_gaddr;
+  ulong val_gaddr = rec->val_gaddr;
   fd_funkier_val_init( rec );
   if( val_gaddr ) fd_alloc_free( alloc, fd_wksp_laddr_fast( wksp, val_gaddr ) );
   return rec;
 }
 
 #ifdef FD_FUNKIER_HANDHOLDING
+
 /* fd_funkier_val_verify verifies the record values.  Returns
    FD_FUNKIER_SUCCESS if the values appear intact and FD_FUNKIER_ERR_INVAL if
    not (logs details).  Meant to be called as part of fd_funkier_verify.
@@ -120,6 +120,7 @@ fd_funkier_val_flush( fd_funkier_rec_t * rec,     /* Assumed live funk record in
 
 int
 fd_funkier_val_verify( fd_funkier_t * funk );
+
 #endif
 
 FD_PROTOTYPES_END
