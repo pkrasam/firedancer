@@ -38,6 +38,9 @@ struct fd_archiver_writer_tile_ctx {
 
   fd_archiver_writer_stats_t stats;
 
+  ulong buf_sz;
+  uchar buf[ FD_ARCHIVER_WRITER_OUT_BUF_SZ ];
+
   ulong  last_packet_ns;
   double tick_per_ns;
 
@@ -274,6 +277,33 @@ during_frag( fd_archiver_writer_tile_ctx_t * ctx,
   }
   ctx->last_packet_ns = now_ns;
 
+  /* Copy the frag to the buffer */
+  if( FD_UNLIKELY(( sz > FD_ARCHIVER_WRITER_OUT_BUF_SZ )) ) {
+    FD_LOG_ERR(( "buffer too small" ));
+  }
+  memcpy( ctx->buf, src, sz );
+  ctx->buf_sz = sz;
+
+  ctx->stats.net_repair_in_cnt  += header->tile_id == FD_ARCHIVER_TILE_ID_REPAIR;
+  ctx->stats.net_gossip_in_cnt  += header->tile_id == FD_ARCHIVER_TILE_ID_GOSSIP;
+  ctx->stats.net_shred_in_cnt   += header->tile_id == FD_ARCHIVER_TILE_ID_SHRED;
+  ctx->stats.net_quic_in_cnt    += header->tile_id == FD_ARCHIVER_TILE_ID_QUIC;
+}
+
+static inline void
+after_frag( fd_archiver_writer_tile_ctx_t * ctx,
+            ulong                           in_idx,
+            ulong                           seq,
+            ulong                           sig,
+            ulong                           sz,
+            ulong                           tsorig,
+            fd_stem_context_t *             stem ) {
+  (void)in_idx;
+  (void)seq;
+  (void)sig;
+  (void)tsorig;
+  (void)stem;
+
   /* Resize the mmap region if necessary */
   if( FD_UNLIKELY( ctx->mmap_off + sz > ctx->mmap_size ) ) {
     resize_mmap( ctx );
@@ -281,19 +311,8 @@ during_frag( fd_archiver_writer_tile_ctx_t * ctx,
 
   /* Copy fragment into the mapped region */
   char * dst = ctx->mmap_addr + ctx->mmap_off;
-  memcpy( dst, src, sz );
+  memcpy( dst, ctx->buf, sz );
   ctx->mmap_off += sz;
-
-  /* Sanity-check header has not been overwritten */
-  fd_archiver_frag_header_t * written_header = fd_type_pun( dst );
-  if( FD_UNLIKELY(( written_header->magic != FD_ARCHIVER_HEADER_MAGIC )) ) {
-    FD_LOG_ERR(( "bad magic" ));
-  }
-
-  ctx->stats.net_repair_in_cnt  += header->tile_id == FD_ARCHIVER_TILE_ID_REPAIR;
-  ctx->stats.net_gossip_in_cnt  += header->tile_id == FD_ARCHIVER_TILE_ID_GOSSIP;
-  ctx->stats.net_shred_in_cnt   += header->tile_id == FD_ARCHIVER_TILE_ID_SHRED;
-  ctx->stats.net_quic_in_cnt += header->tile_id == FD_ARCHIVER_TILE_ID_QUIC;
 }
 
 #define STEM_BURST (1UL)
@@ -304,6 +323,7 @@ during_frag( fd_archiver_writer_tile_ctx_t * ctx,
 
 #define STEM_CALLBACK_DURING_HOUSEKEEPING during_housekeeping
 #define STEM_CALLBACK_DURING_FRAG         during_frag
+#define STEM_CALLBACK_AFTER_FRAG          after_frag
 
 #include "../../../../disco/stem/fd_stem.c"
 
