@@ -41,11 +41,11 @@ struct fd_archiver_playback_tile_ctx {
 
   fd_archiver_playback_stats_t stats;
 
-  long tick_per_ms;
+  double tick_per_ns;
 
-  long next_publish_tick;
+  ulong next_publish_ns;
 
-  long startup_delay_tickcount;
+  ulong startup_delay_ns;
 
   ulong pending_publish_link_idx;
   fd_archiver_frag_header_t pending_publish_header;
@@ -107,10 +107,9 @@ scratch_footprint( fd_topo_tile_t const * tile ) {
   return FD_LAYOUT_FINI( l, scratch_align() );
 }
 
-static inline long 
+static inline ulong 
 now( fd_archiver_playback_tile_ctx_t * ctx ) {
-  (void)ctx;
-  return fd_tickcount();
+  return (ulong)((double)(fd_tickcount()) / ctx->tick_per_ns);
 }
 
 static void
@@ -141,7 +140,7 @@ unprivileged_init( fd_topo_t *      topo,
   fd_archiver_playback_tile_ctx_t * ctx = FD_SCRATCH_ALLOC_APPEND( l, alignof(fd_archiver_playback_tile_ctx_t), sizeof(fd_archiver_playback_tile_ctx_t) );
   FD_SCRATCH_ALLOC_FINI( l, scratch_align() );
 
-  ctx->tick_per_ms = (long)(fd_tempo_tick_per_ns( NULL ) * 1000000.);
+  ctx->tick_per_ns = fd_tempo_tick_per_ns( NULL );
 
   /* mmap the file in */
   struct stat st;
@@ -165,7 +164,7 @@ unprivileged_init( fd_topo_t *      topo,
     }
   }
 
-  ctx->startup_delay_tickcount = (long)(fd_tempo_tick_per_ns( NULL ) * (1000000000. * FD_ARCHIVER_STARTUP_DELAY_SECONDS));
+  ctx->startup_delay_ns = now( ctx ) + (1000000000 * FD_ARCHIVER_STARTUP_DELAY_SECONDS);
 
   /* Setup output links */
   for( ulong i=0; i<tile->out_cnt; i++ ) {
@@ -181,12 +180,12 @@ unprivileged_init( fd_topo_t *      topo,
 
 static inline int
 should_delay_publish( fd_archiver_playback_tile_ctx_t * ctx ) {
-  if( FD_UNLIKELY(( ctx->next_publish_tick == 0L )) ) {
+  if( FD_UNLIKELY(( ctx->next_publish_ns == 0L )) ) {
     return 0;
   }
 
-  long now_ticks = now( ctx );
-  return now_ticks < ctx->next_publish_tick || now_ticks < ctx->startup_delay_tickcount;
+  ulong now_ns = now( ctx );
+  return now_ns < ctx->next_publish_ns || now_ns < ctx->startup_delay_ns;
 }
 
 static inline void
@@ -281,7 +280,7 @@ after_credit( fd_archiver_playback_tile_ctx_t *     ctx,
   uchar       * dst      = (uchar *)fd_chunk_to_laddr( ctx->out[ out_link_idx ].mem, ctx->out[ out_link_idx ].chunk );
   fd_memcpy( dst, frag_ptr, ctx->pending_publish_header.sz );
   ctx->archive_off += ctx->pending_publish_header.sz;
-  ctx->next_publish_tick = now( ctx ) + ctx->pending_publish_header.ticks_since_prev_fragment;
+  ctx->next_publish_ns = now( ctx ) + ctx->pending_publish_header.ns_since_prev_fragment;
 }
 
 #define STEM_BURST (1UL)

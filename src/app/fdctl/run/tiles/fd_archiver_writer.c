@@ -34,12 +34,12 @@ typedef struct {
 } fd_archiver_writer_in_ctx_t;
 
 struct fd_archiver_writer_tile_ctx {
-  long                        tick_per_ms;
   fd_archiver_writer_in_ctx_t in[ 32 ];
 
   fd_archiver_writer_stats_t stats;
 
-  long last_packet_ticks;
+  ulong  last_packet_ns;
+  double tick_per_ns;
 
   int     archive_file_fd;
   char *  mmap_addr;
@@ -174,13 +174,12 @@ unprivileged_init( fd_topo_t *      topo,
     ctx->in[ i ].wmark  = fd_dcache_compact_wmark ( ctx->in[ i ].mem, link->dcache, link->mtu );
   }
 
-  ctx->tick_per_ms = (long)(fd_tempo_tick_per_ns( NULL ) * 1000000.);
+  ctx->tick_per_ns = fd_tempo_tick_per_ns( NULL );
 }
 
-static inline long 
+static inline ulong 
 now( fd_archiver_writer_tile_ctx_t * ctx ) {
-  (void)ctx;
-  return fd_tickcount();
+  return (ulong)((double)(fd_tickcount()) / ctx->tick_per_ns);
 }
 
 static void
@@ -216,7 +215,7 @@ during_housekeeping( fd_archiver_writer_tile_ctx_t * ctx ) {
 /* Expand the mmap region if the next write would exceed the current size. */
 static void
 resize_mmap( fd_archiver_writer_tile_ctx_t * ctx ) {
-  ulong new_size = ctx->mmap_size << 1;
+  ulong new_size = ctx->mmap_size + FD_SHMEM_HUGE_PAGE_SZ * 10;
 
   mmap_sync( ctx ); 
 
@@ -267,13 +266,13 @@ during_frag( fd_archiver_writer_tile_ctx_t * ctx,
   fd_archiver_frag_header_t * header = fd_type_pun( src );
 
   /* Set the relative delay on the packet */
-  long now_ticks = now( ctx );
-  if( ctx->last_packet_ticks == 0L ) {
-    header->ticks_since_prev_fragment = 0L;
+  ulong now_ns = now( ctx );
+  if( ctx->last_packet_ns == 0UL ) {
+    header->ns_since_prev_fragment = 0L;
   } else {
-    header->ticks_since_prev_fragment = now_ticks - ctx->last_packet_ticks;
+    header->ns_since_prev_fragment = now_ns - ctx->last_packet_ns;
   }
-  ctx->last_packet_ticks = now_ticks;
+  ctx->last_packet_ns = now_ns;
 
   /* Resize the mmap region if necessary */
   if( FD_UNLIKELY( ctx->mmap_off + sz > ctx->mmap_size ) ) {
