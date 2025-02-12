@@ -56,6 +56,7 @@ FD_PROTOTYPES_BEGIN
 #define fd_pubkey_walk             fd_hash_walk
 #define fd_pubkey_decode_inner     fd_hash_decode_inner
 #define fd_pubkey_decode_footprint fd_hash_decode_footprint
+#define fd_pubkey_decode_footprint_inner fd_hash_decode_footprint_inner
 #define fd_pubkey_decode_new       fd_hash_decode_new
 
 #define fd_hash_decode_archival             fd_hash_decode
@@ -150,6 +151,9 @@ fd_solana_vote_account_align( void );
 int
 fd_solana_vote_account_decode_footprint( fd_bincode_decode_ctx_t * ctx, ulong * total_sz );
 
+int
+fd_solana_vote_account_decode_footprint_inner( fd_bincode_decode_ctx_t * ctx, ulong * total_sz );
+
 void *
 fd_solana_vote_account_decode_new( void * mem, fd_bincode_decode_ctx_t * ctx );
 
@@ -221,6 +225,9 @@ fd_flamenco_txn_walk( void *                    w,
 
 int
 fd_flamenco_txn_decode_footprint( fd_bincode_decode_ctx_t * ctx, ulong * total_sz );
+
+int
+fd_flamenco_txn_decode_footprint_inner( fd_bincode_decode_ctx_t * ctx, ulong * total_sz );
 
 void *
 fd_flamenco_txn_decode_new( void * mem, fd_bincode_decode_ctx_t * ctx );

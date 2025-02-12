@@ -1680,7 +1680,6 @@ fd_runtime_finalize_txn( fd_exec_slot_ctx_t *         slot_ctx,
           fd_bincode_decode_ctx_t decode_vsv = {
             .data    = acc_rec->const_data,
             .dataend = acc_rec->const_data + acc_rec->const_meta->dlen,
-            .valloc  = fd_spad_virtual( txn_ctx->spad )
           };
 
           ulong total_sz = 0UL;
@@ -1690,9 +1689,7 @@ fd_runtime_finalize_txn( fd_exec_slot_ctx_t *         slot_ctx,
             continue;
           }
 
-          FD_LOG_WARNING(("TOTAL SZ %lu", total_sz));
-
-          uchar * mem = fd_spad_alloc( txn_ctx->spad, 8UL, 10000 );
+          uchar * mem = fd_spad_alloc( txn_ctx->spad, 8UL, total_sz );
           fd_vote_state_versioned_decode_new( mem, &decode_vsv );
           fd_vote_state_versioned_t * vsv = (fd_vote_state_versioned_t *)mem;
 

@@ -63,6 +63,15 @@ fd_flamenco_txn_decode_footprint( fd_bincode_decode_ctx_t * ctx, ulong * total_s
   return 0;
 }
 
+
+int
+fd_flamenco_txn_decode_footprint_inner( fd_bincode_decode_ctx_t * ctx, ulong * total_sz ) {
+  (void)ctx;
+  (void)total_sz;
+  FD_LOG_ERR(("UNIMPLEMENTED"));
+  return 0;
+}
+
 void *
 fd_flamenco_txn_decode_new( void * mem, fd_bincode_decode_ctx_t * ctx ) {
   (void)ctx;
@@ -343,6 +352,14 @@ int fd_solana_vote_account_encode( fd_solana_vote_account_t const * self, fd_bin
 
 int
 fd_solana_vote_account_decode_footprint( fd_bincode_decode_ctx_t * ctx, ulong * total_sz ) {
+  (void)ctx;
+  (void)total_sz;
+  FD_LOG_ERR(("UNIMPLEMENTED"));
+  return 0;
+}
+
+int
+fd_solana_vote_account_decode_footprint_inner( fd_bincode_decode_ctx_t * ctx, ulong * total_sz ) {
   (void)ctx;
   (void)total_sz;
   FD_LOG_ERR(("UNIMPLEMENTED"));
