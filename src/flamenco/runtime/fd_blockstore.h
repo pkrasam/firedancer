@@ -353,8 +353,8 @@ typedef struct fd_block_meta fd_block_meta_t;
 #define MAP_KEY_HASH(key, seed)   (*(key))
 #include "../../util/tmpl/fd_map_slot_para.c"
 
-#define BLOCK_META_LOCK_CNT  128UL
-#define BLOCK_META_PROBE_CNT 16UL
+#define BLOCK_META_LOCK_CNT  64UL
+#define BLOCK_META_PROBE_CNT 4UL
 
 /* fd_block_idx is an in-memory index of finalized blocks that have been
    archived to disk.  It records the slot together with the byte offset

@@ -584,6 +584,9 @@ fd_blockstore_scan_block( fd_blockstore_t * blockstore, ulong slot, fd_block_t *
           }
           fd_txn_key_t sig;
           fd_memcpy( &sig, sigs + j, sizeof( sig ) );
+
+          if( fd_txn_map_query( txn_map, &sig, NULL ) != NULL ) continue;
+
           fd_txn_map_t * elem = fd_txn_map_insert( txn_map, &sig );
           if( elem == NULL ) { break; }
           elem->slot       = slot;
