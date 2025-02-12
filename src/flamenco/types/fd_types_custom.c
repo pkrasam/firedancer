@@ -59,12 +59,14 @@ int
 fd_flamenco_txn_decode_footprint( fd_bincode_decode_ctx_t * ctx, ulong * total_sz ) {
   (void)ctx;
   (void)total_sz;
+  FD_LOG_ERR(("UNIMPLEMENTED"));
   return 0;
 }
 
 void *
 fd_flamenco_txn_decode_new( void * mem, fd_bincode_decode_ctx_t * ctx ) {
   (void)ctx;
+  FD_LOG_ERR(("UNIMPLEMENTED"));
   return mem;
 }
 
@@ -73,6 +75,7 @@ fd_flamenco_txn_decode_inner( void * struct_mem, void * * alloc_mem, fd_bincode_
   (void)struct_mem;
   (void)alloc_mem;
   (void)ctx;
+  FD_LOG_ERR(("UNIMPLEMENTED"));
 }
 
 
@@ -342,12 +345,14 @@ int
 fd_solana_vote_account_decode_footprint( fd_bincode_decode_ctx_t * ctx, ulong * total_sz ) {
   (void)ctx;
   (void)total_sz;
+  FD_LOG_ERR(("UNIMPLEMENTED"));
   return 0;
 }
 
 void *
 fd_solana_vote_account_decode_new( void * mem, fd_bincode_decode_ctx_t * ctx ) {
   (void)ctx;
+  FD_LOG_ERR(("UNIMPLEMENTED"));
   return mem;
 }
 
@@ -356,6 +361,7 @@ fd_solana_vote_account_decode_inner( void * struct_mem, void * * alloc_mem, fd_b
   (void)struct_mem;
   (void)alloc_mem;
   (void)ctx;
+  FD_LOG_ERR(("UNIMPLEMENTED"));
 }
 
 

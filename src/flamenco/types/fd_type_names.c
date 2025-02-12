@@ -1,5 +1,5 @@
 // This is an auto-generated file. To add entries, edit fd_types.json
-#define FD_TYPE_NAME_COUNT 242
+#define FD_TYPE_NAME_COUNT 243
 static char const * fd_type_names[FD_TYPE_NAME_COUNT] = {
  "fd_hash",
  "fd_pubkey",
@@ -243,4 +243,5 @@ static char const * fd_type_names[FD_TYPE_NAME_COUNT] = {
  "fd_test_struct_option",
  "fd_test_struct_map_obj",
  "fd_test_struct",
+ "fd_test_enum",
 };
