@@ -36,13 +36,13 @@ for MACHINE in ${MACHINES[*]}; do
   make clean --silent >/dev/null
   contrib/make-j $TARGETS
   if [[ "$NOTEST" != 1 ]]; then
+    make run-test-vectors
     make run-unit-test
+    make run-fuzz-test
+    make run-script-test
     if [[ "$EXTRAS" != *"ubsan"* && "$EXTRAS" != *"asan"* ]]; then
       make run-integration-test
     fi
-    make run-fuzz-test
-    make run-script-test
-    NUM_PROCESSES=1 make run-test-vectors
     if [[ "$HAS_LLVM_COV" == 1 ]]; then
       make "${OBJDIR}/cov/cov.lcov"
     fi
