@@ -441,7 +441,7 @@ typedef struct fd_account_meta_off fd_account_meta_off_t;
 struct __attribute__((aligned(8UL))) fd_vote_accounts_pair {
   fd_pubkey_t key;
   ulong stake;
-  fd_solana_vote_account_t value;
+  fd_solana_account_t value;
 };
 typedef struct fd_vote_accounts_pair fd_vote_accounts_pair_t;
 #define FD_VOTE_ACCOUNTS_PAIR_FOOTPRINT sizeof(fd_vote_accounts_pair_t)
@@ -5459,6 +5459,10 @@ void fd_solana_account_walk( void * w, fd_solana_account_t const * self, fd_type
 ulong fd_solana_account_size( fd_solana_account_t const * self );
 ulong fd_solana_account_footprint( void );
 ulong fd_solana_account_align( void );
+int fd_solana_account_decode_archival( fd_solana_account_t * self, fd_bincode_decode_ctx_t * ctx );
+int fd_solana_account_decode_archival_preflight( fd_bincode_decode_ctx_t * ctx );
+void fd_solana_account_decode_archival_unsafe( fd_solana_account_t * self, fd_bincode_decode_ctx_t * ctx );
+int fd_solana_account_encode_archival( fd_solana_account_t const * self, fd_bincode_encode_ctx_t * ctx );
 
 void fd_vote_accounts_pair_new( fd_vote_accounts_pair_t * self );
 int fd_vote_accounts_pair_decode( fd_vote_accounts_pair_t * self, fd_bincode_decode_ctx_t * ctx );
