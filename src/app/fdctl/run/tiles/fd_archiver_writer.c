@@ -17,7 +17,7 @@
 #define FD_ARCHIVER_WRITER_OUT_BUF_SZ (10240UL)
 
 /* Initial size of the mmapped region. This will grow. */
-#define FD_ARCHIVER_WRITER_MMAP_INITIAL_SIZE  (2147483648UL)
+#define FD_ARCHIVER_WRITER_MMAP_INITIAL_SIZE  (8034920448UL)
 
 struct fd_archiver_writer_stats {
   ulong net_shred_in_cnt;
@@ -48,8 +48,13 @@ struct fd_archiver_writer_tile_ctx {
   char *  mmap_addr;
   ulong   mmap_size;
   ulong   mmap_off;
+  ulong   mmap_unsynced_offset;
 
-  char *  mmap_unsynced;
+  /* Debugging stuff */
+  ulong last_repair_seq;
+  ulong last_shred_seq;
+
+  ulong msync_housekeeping_interval_cnt;
 };
 typedef struct fd_archiver_writer_tile_ctx fd_archiver_writer_tile_ctx_t;
 
@@ -165,7 +170,7 @@ unprivileged_init( fd_topo_t *      topo,
   if( madvise( ctx->mmap_addr, ctx->mmap_size, MADV_SEQUENTIAL ) ) {
     FD_LOG_WARNING(( "madvise(MADV_SEQUENTIAL) failed (%i-%s)", errno, strerror(errno) ));
   }
-  ctx->mmap_unsynced = ctx->mmap_addr;
+  ctx->mmap_unsynced_offset = ctx->mmap_off;
 
   /* Input links */
   for( ulong i=0; i<tile->in_cnt; i++ ) {
@@ -186,27 +191,39 @@ now( fd_archiver_writer_tile_ctx_t * ctx ) {
 }
 
 static void
-mmap_sync( fd_archiver_writer_tile_ctx_t * ctx ) {
-  ulong sync_len = FD_SHMEM_HUGE_PAGE_SZ;
+mmap_sync( fd_archiver_writer_tile_ctx_t * ctx, int flags ) {
+
+  /* 
+  0     mmap_addr       mmap_unsynced_offset     mmap_offset         
   
-  if( sync_len < FD_SHMEM_HUGE_PAGE_SZ ) {
+  
+   */
+
+
+  ulong raw_sync_len = ctx->mmap_off - ctx->mmap_unsynced_offset;
+  if( raw_sync_len < FD_SHMEM_NORMAL_PAGE_SZ ) {
     return;
   }
+  ulong sync_len = (raw_sync_len / FD_SHMEM_NORMAL_PAGE_SZ) * FD_SHMEM_NORMAL_PAGE_SZ;
 
   if( msync(
-    ctx->mmap_unsynced,
+    ctx->mmap_addr + ctx->mmap_unsynced_offset,
     sync_len,
-    MS_SYNC ) != 0 ) {
+    flags ) != 0 ) {
     FD_LOG_ERR(( "msync failed. errno=%i sync_len=%lu", errno, sync_len ));
   }
 
-  ctx->mmap_unsynced = ctx->mmap_unsynced + sync_len;
+  ctx->mmap_unsynced_offset = ctx->mmap_unsynced_offset + sync_len;
 }
 
 static void
 during_housekeeping( fd_archiver_writer_tile_ctx_t * ctx ) {
   (void)ctx;
-  mmap_sync( ctx );
+  ctx->msync_housekeeping_interval_cnt = ctx->msync_housekeeping_interval_cnt % 40;
+  if( ctx->msync_housekeeping_interval_cnt == 0 ) {
+    mmap_sync( ctx, MS_SYNC );
+  }
+  ctx->msync_housekeeping_interval_cnt += 1;
 
   FD_LOG_WARNING(( "writer stats: net_shred_in_cnt=%lu net_quic_in_cnt=%lu net_gossip_in_cnt=%lu net_repair_in_cnt=%lu",
     ctx->stats.net_shred_in_cnt,
@@ -220,7 +237,7 @@ static void
 resize_mmap( fd_archiver_writer_tile_ctx_t * ctx ) {
   ulong new_size = ctx->mmap_size + FD_SHMEM_HUGE_PAGE_SZ * 10;
 
-  mmap_sync( ctx ); 
+  mmap_sync( ctx, MS_SYNC ); 
 
   /* ftruncate to new_size */
   if( FD_UNLIKELY( ftruncate( ctx->archive_file_fd, (off_t)new_size ) ) ) {
@@ -242,7 +259,7 @@ resize_mmap( fd_archiver_writer_tile_ctx_t * ctx ) {
 
   ctx->mmap_addr = (char *)new_map;
   ctx->mmap_size = new_size;
-  ctx->mmap_unsynced = ctx->mmap_addr;
+  ctx->mmap_unsynced_offset = ctx->mmap_off;
 }
 
 static inline void
@@ -306,6 +323,7 @@ after_frag( fd_archiver_writer_tile_ctx_t * ctx,
 
   /* Resize the mmap region if necessary */
   if( FD_UNLIKELY( ctx->mmap_off + sz > ctx->mmap_size ) ) {
+    FD_LOG_ERR(( "mmap too small" ));
     resize_mmap( ctx );
   }
 
@@ -313,6 +331,26 @@ after_frag( fd_archiver_writer_tile_ctx_t * ctx,
   char * dst = ctx->mmap_addr + ctx->mmap_off;
   memcpy( dst, ctx->buf, sz );
   ctx->mmap_off += sz;
+
+  /* FIXME: Debugging stuff, remove */
+  fd_archiver_frag_header_t * header = fd_type_pun( ctx->buf );
+  if( header->tile_id == FD_ARCHIVER_TILE_ID_REPAIR ) {
+    if( ctx->last_repair_seq ) {
+      if( !( header->seq == (ctx->last_repair_seq + 1) ) ) {
+        FD_LOG_ERR(( "header->seq=%lu ctx->last_repair_seq=%lu", header->seq, ctx->last_repair_seq ));
+      }
+    }
+    ctx->last_repair_seq = header->seq;
+  }
+
+  if( header->tile_id == FD_ARCHIVER_TILE_ID_SHRED ) {
+    if( ctx->last_shred_seq ) {
+      if( !( header->seq == (ctx->last_shred_seq + 1) ) ) {
+        FD_LOG_ERR(( "header->seq=%lu ctx->last_shred_seq=%lu", header->seq, ctx->last_shred_seq ));
+      }
+    }
+    ctx->last_shred_seq = header->seq;
+  }
 }
 
 #define STEM_BURST (1UL)

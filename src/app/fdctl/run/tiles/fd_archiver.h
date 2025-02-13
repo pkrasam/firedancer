@@ -22,7 +22,9 @@ struct __attribute__((aligned(1UL))) fd_archiver_frag_header {
   ulong sz;
   /* Signature of the fragment */
   ulong sig;
+  /* Sequence number of the fragment */
+  ulong seq;
 };
 typedef struct fd_archiver_frag_header fd_archiver_frag_header_t;
-#define FD_ARCHIVER_FRAG_HEADER_FOOTPRINT (40UL)
+#define FD_ARCHIVER_FRAG_HEADER_FOOTPRINT (48UL)
 #define FD_ARCHIVER_FRAG_HEADER_ALIGN     (1UL)

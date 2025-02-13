@@ -515,18 +515,31 @@ fd_topo_initialize( config_t * config ) {
   }
 
   if ( enable_archiver ) {
+    fd_topob_tile_in(  topo, "arch_f", 0, "metric_in", "net_gossip", 0, FD_TOPOB_UNRELIABLE, FD_TOPOB_POLLED ); // 0
+
+    fd_topob_tile_in(  topo, "arch_f", 1, "metric_in", "net_repair", 0, FD_TOPOB_RELIABLE, FD_TOPOB_POLLED ); // 1
+    // fd_topob_tile_in(  topo, "arch_f", 2, "metric_in", "net_repair", 0, FD_TOPOB_RELIABLE, FD_TOPOB_POLLED ); // 2
+    // fd_topob_tile_in(  topo, "arch_f", 3, "metric_in", "net_repair", 0, FD_TOPOB_RELIABLE, FD_TOPOB_POLLED ); // 3
+    // fd_topob_tile_in(  topo, "arch_f", 4, "metric_in", "net_repair", 0, FD_TOPOB_RELIABLE, FD_TOPOB_POLLED ); // 4
+
+    fd_topob_tile_in(  topo, "arch_f", 5, "metric_in", "net_shred", 0, FD_TOPOB_RELIABLE, FD_TOPOB_POLLED ); // 5
+    // fd_topob_tile_in(  topo, "arch_f", 6, "metric_in", "net_shred", 0, FD_TOPOB_RELIABLE, FD_TOPOB_POLLED ); // 6
+    // fd_topob_tile_in(  topo, "arch_f", 7, "metric_in", "net_shred", 0, FD_TOPOB_RELIABLE, FD_TOPOB_POLLED ); // 7
+    // fd_topob_tile_in(  topo, "arch_f", 8, "metric_in", "net_shred", 0, FD_TOPOB_RELIABLE, FD_TOPOB_POLLED ); // 8
+    // fd_topob_tile_in(  topo, "arch_f", 9, "metric_in", "net_shred", 0, FD_TOPOB_RELIABLE, FD_TOPOB_POLLED ); // 9
+
     /* Each feeder tile is a reliable consumer of all input links */
-    FOR(archiver_feeder_tile_cnt) {
-      for( ulong j=0UL; j<net_tile_cnt; j++ ) fd_topob_tile_in(  topo, "arch_f", i, "metric_in", "net_shred", j, FD_TOPOB_RELIABLE, FD_TOPOB_POLLED );
-      for( ulong j=0UL; j<net_tile_cnt; j++ ) fd_topob_tile_in(  topo, "arch_f", i, "metric_in", "net_gossip",j, FD_TOPOB_RELIABLE, FD_TOPOB_POLLED );
-      for( ulong j=0UL; j<net_tile_cnt; j++ ) fd_topob_tile_in(  topo, "arch_f", i, "metric_in", "net_repair", j, FD_TOPOB_RELIABLE, FD_TOPOB_POLLED );
-      for( ulong j=0UL; j<quic_tile_cnt; j++ ) fd_topob_tile_in(  topo, "arch_f", i, "metric_in", "net_quic", j, FD_TOPOB_RELIABLE, FD_TOPOB_POLLED );
-    }
+    // FOR(archiver_feeder_tile_cnt) {
+    //   for( ulong j=0UL; j<net_tile_cnt; j++ ) fd_topob_tile_in(  topo, "arch_f", i, "metric_in", "net_shred", j, FD_TOPOB_RELIABLE, FD_TOPOB_POLLED );
+    //   for( ulong j=0UL; j<net_tile_cnt; j++ ) fd_topob_tile_in(  topo, "arch_f", i, "metric_in", "net_gossip",j, FD_TOPOB_RELIABLE, FD_TOPOB_POLLED );
+    //   for( ulong j=0UL; j<net_tile_cnt; j++ ) fd_topob_tile_in(  topo, "arch_f", i, "metric_in", "net_repair", j, FD_TOPOB_RELIABLE, FD_TOPOB_POLLED );
+    //   for( ulong j=0UL; j<quic_tile_cnt; j++ ) fd_topob_tile_in(  topo, "arch_f", i, "metric_in", "net_quic", j, FD_TOPOB_RELIABLE, FD_TOPOB_POLLED );
+    // }
 
     /* The archiver writer tile is a reliable consumer of the archiver feeder tiles */
     fd_topob_wksp( topo, "arch_f_w" );
     FOR(archiver_feeder_tile_cnt) {
-      fd_topob_link( topo, "arch_f_w", "arch_f_w", config->tiles.net.send_buffer_size * 16, FD_NET_MTU, 1UL );
+      fd_topob_link( topo, "arch_f_w", "arch_f_w", config->tiles.net.send_buffer_size, FD_NET_MTU, 1UL );
       fd_topob_tile_out( topo, "arch_f", i, "arch_f_w", i );
       fd_topob_tile_in(  topo, "arch_w", 0UL, "metric_in", "arch_f_w", i, FD_TOPOB_RELIABLE, FD_TOPOB_POLLED );
     }

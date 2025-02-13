@@ -70,6 +70,15 @@ typedef struct {
   ulong       chunk;
 } fd_net_out_ctx_t;
 
+struct fd_net_received_stats {
+  ulong net_shred_in_cnt;
+  ulong quic_verify_in_cnt;
+  ulong net_gossip_in_cnt;
+  ulong net_repair_in_cnt;
+  ulong total_packet_in_cnt;
+};
+typedef struct fd_net_received_stats fd_net_received_stats_t;
+
 typedef struct {
   ulong          xsk_cnt;
   fd_xsk_t *     xsk[ 2 ];
@@ -117,6 +126,8 @@ typedef struct {
    */
   ulong * cr_avail;
   ulong   cr_decrement_amount;
+
+  fd_net_received_stats_t received_stats;
 } fd_net_ctx_t;
 
 FD_FN_CONST static inline ulong
@@ -207,24 +218,31 @@ net_rx_aio_send( void *                    _ctx,
 
     ushort proto;
     fd_net_out_ctx_t * out;
+    ctx->received_stats.total_packet_in_cnt += 1;
     if(      FD_UNLIKELY( udp_dstport==ctx->shred_listen_port ) ) {
       proto = DST_PROTO_SHRED;
       out = ctx->shred_out;
+      ctx->received_stats.net_shred_in_cnt += 1;
     } else if( FD_UNLIKELY( udp_dstport==ctx->quic_transaction_listen_port ) ) {
       proto = DST_PROTO_TPU_QUIC;
       out = ctx->quic_out;
+      ctx->received_stats.quic_verify_in_cnt += 1;
     } else if( FD_UNLIKELY( udp_dstport==ctx->legacy_transaction_listen_port ) ) {
       proto = DST_PROTO_TPU_UDP;
       out = ctx->quic_out;
+      ctx->received_stats.quic_verify_in_cnt += 1;
     } else if( FD_UNLIKELY( udp_dstport==ctx->gossip_listen_port ) ) {
       proto = DST_PROTO_GOSSIP;
       out = ctx->gossip_out;
+      ctx->received_stats.net_gossip_in_cnt += 1;
     } else if( FD_UNLIKELY( udp_dstport==ctx->repair_intake_listen_port ) ) {
       proto = DST_PROTO_REPAIR;
       out = ctx->repair_out;
+      ctx->received_stats.net_repair_in_cnt += 1;
     } else if( FD_UNLIKELY( udp_dstport==ctx->repair_serve_listen_port ) ) {
       proto = DST_PROTO_REPAIR;
       out = ctx->repair_out;
+      ctx->received_stats.net_repair_in_cnt += 1;
     } else {
 
       FD_LOG_ERR(( "Firedancer received a UDP packet on port %hu which was not expected. "
@@ -294,15 +312,26 @@ before_credit( fd_net_ctx_t *      ctx,
                int *               charge_busy ) {
   (void)stem;
 
+  /* If the first time, update all the variables from stem */
   if( FD_UNLIKELY( !ctx->cr_avail ) ) {
-    ctx->cr_avail            = stem->cr_avail;
+    ctx->cr_avail = stem->cr_avail;
     ctx->cr_decrement_amount = stem->cr_decrement_amount;
 
-    ctx->quic_out->seq   = &stem->seqs[ ctx->quic_out->out_idx ];
-    ctx->repair_out->seq = &stem->seqs[ ctx->repair_out->out_idx ];
-    ctx->shred_out->seq  = &stem->seqs[ ctx->shred_out->out_idx ];
-    ctx->gossip_out->seq = &stem->seqs[ ctx->gossip_out->out_idx ];
+    ctx->quic_out->seq       = &stem->seqs[ ctx->quic_out->out_idx ];
+    ctx->repair_out->seq     = &stem->seqs[ ctx->repair_out->out_idx ];
+    ctx->shred_out->seq      = &stem->seqs[ ctx->shred_out->out_idx ];
+    ctx->gossip_out->seq     = &stem->seqs[ ctx->gossip_out->out_idx ];
   }
+
+  /* If not the first time, just update the cr_avail pointer */
+  ctx->cr_avail = stem->cr_avail;
+
+  // if ( FD_UNLIKELY( ctx->received_stats.total_packet_in_cnt > 30000000 ) ) {
+  //   if ( !ctx->blackhole ) {
+  //     FD_LOG_WARNING(( "net tile finished stats: quic=%lu repair=%lu shred=%lu gossip=%lu", ctx->received_stats.quic_verify_in_cnt, ctx->received_stats.net_repair_in_cnt, ctx->received_stats.net_shred_in_cnt, ctx->received_stats.net_gossip_in_cnt ));
+  //     ctx->blackhole = 1;
+  //   }
+  // }
 
   for( ulong i=0UL; i<ctx->xsk_cnt; i++ ) {
     if( FD_LIKELY( fd_xsk_aio_service( ctx->xsk_aio[i] ) ) ) {

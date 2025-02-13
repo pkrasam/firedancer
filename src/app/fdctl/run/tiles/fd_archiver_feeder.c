@@ -21,6 +21,8 @@ struct fd_archiver_feeder_tile_ctx {
   ulong       out_wmark;
   ulong       out_chunk;
 
+  ulong count;
+
   ulong round_robin_idx;
   ulong round_robin_cnt;
 
@@ -136,10 +138,58 @@ before_frag( fd_archiver_feeder_tile_ctx_t * ctx,
   (void)sig;
   (void)seq;
 
-  if ( ctx->round_robin_idx == in_idx ) {
-    return 0;
-  }
+  /* limit gossip */
+  if ( ctx->round_robin_idx == 0) {
+      /* TODO: maybe just filter out contact infos? */
+      if( ctx->count >= 100000 ) {
+        return 1;
+      }
+      ctx->count += 1;
+      return 0;
+    }
 
+  return 0;
+
+    /* gossip */
+    if ( ctx->round_robin_idx == 0) {
+      if( ctx->count >= 100000 ) {
+        return 1;
+      }
+      ctx->count += 1;
+      return 0;
+    }
+
+    /* repair */
+    if( ctx->round_robin_idx == 1 ) {
+      return !((seq % 4) == 1);
+    }
+    if( ctx->round_robin_idx == 2 ) {
+      return !((seq % 4) == 2);
+    }
+    if( ctx->round_robin_idx == 3 ) {
+      return !((seq % 4) == 3);
+    }
+    if( ctx->round_robin_idx == 4 ) {
+      return !((seq % 4) == 0);
+    }
+
+    /* shred */
+    if( ctx->round_robin_idx == 5 ) {
+      return !((seq % 5) == 1);
+    }
+    if( ctx->round_robin_idx == 6 ) {
+      return !((seq % 5) == 2);
+    }
+    if( ctx->round_robin_idx == 7 ) {
+      return !((seq % 5) == 3);
+    }
+    if( ctx->round_robin_idx == 8 ) {
+      return !((seq % 5) == 4);
+    }
+    if( ctx->round_robin_idx == 9 ) {
+      return !((seq % 5) == 0);
+    }
+    
   return 1;
 }
 
@@ -172,11 +222,12 @@ during_frag( fd_archiver_feeder_tile_ctx_t * ctx,
     /* header->ns_since_prev_fragment is set in the single writer tile, so that we have a total order */
     header->sz                         = sz;
     header->sig                        = sig;
-
+    header->seq                        = seq;
+    
     /* Write the frag to the dst */
-    fd_memcpy( dst + FD_ARCHIVER_FRAG_HEADER_FOOTPRINT, src, sz );
+    fd_memcpy( dst + FD_ARCHIVER_FRAG_HEADER_FOOTPRINT, src, sz );                                   
   }
-}
+}        
 
 static inline void
 after_frag( fd_archiver_feeder_tile_ctx_t * ctx,
